@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Entorno virtual
+.venv/
+
+# Base de datos
+*.db
+
+# Variables privadas
+.env
+
+# Sistema
+.vscode/
+.idea/

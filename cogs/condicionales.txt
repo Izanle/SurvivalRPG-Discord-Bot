@@ -1,0 +1,17 @@
+Solo admin
+
+# Solo tú puedes usarlo.
+        if interaction.user.id != 1414035229286596719:
+            await interaction.response.send_message(
+                "❌ No tienes permiso para usar este comando.", ephemeral=True
+            )
+            return
+
+
+Tiene que crear perfil
+
+if not has_survivor(str(interaction.user.id)):
+            await interaction.response.send_message(
+                "❌ Primero debes crear tu perfil con **/perfil**."
+            )
+            return
