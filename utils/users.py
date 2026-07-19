@@ -1,7 +1,10 @@
 from data.database import get_connection
-from datetime import datetime
+from datetime import datetime, timedelta
 from config.effects import SURVIVOR_EFFECTS
 from config.items import ITEMS
+from config.recipes import RECIPES
+from config.shop import SHOP_ITEMS, CATEGORIAS_NO_VENDIBLES, PORCENTAJE_VENTA
+from config.shelter import SHELTER_LEVELS
 
 
 # función principal que muestra el effect del superviviente normal
@@ -82,9 +85,8 @@ def update_status(discord_id, status):
     connection.commit()
     connection.close()
 
-    # Agrega Overos a un superviviente.
 
-
+# Agrega Overos a un superviviente.
 def add_overos(discord_id, amount):
     connection = get_connection()
     cursor = connection.cursor()
@@ -412,6 +414,14 @@ def apply_effect_damage(discord_id):
 
         total_damage += data["daño"]
 
+    # Si el jugador tiene analgésicos activos, reducimos el daño
+    # periódico causado por los efectos (heridas, enfermedades, etc).
+    if total_damage > 0 and has_active_effect(discord_id, "reducir_dolor"):
+
+        total_damage = round(total_damage * 0.5)
+
+        print("💊 Analgésicos activos, daño periódico reducido a:", total_damage)
+
     if total_damage > 0:
 
         print("Daño por efectos:", total_damage)
@@ -732,6 +742,50 @@ def remove_item(discord_id, item, quantity=1):
     connection.close()
 
 
+# Resuelve un evento que puede tener condiciones según el inventario.
+def resolve_event_condition(discord_id, evento):
+
+    condiciones = evento.get("condiciones")
+
+    if not condiciones:
+        return evento, None
+
+    for condicion in condiciones:
+
+        item_requerido = condicion.get("item")
+
+        if item_requerido and has_item(discord_id, item_requerido):
+
+            # Partimos del evento base y sobreescribimos solo
+            # los campos que la condición especifique.
+            resultado = dict(evento)
+
+            for clave, valor in condicion.items():
+
+                if clave in ("item", "consume_item"):
+                    continue
+
+                resultado[clave] = valor
+
+            item_consumido = item_requerido if condicion.get("consume_item") else None
+
+            return resultado, item_consumido
+
+    # Ninguna condición se cumplió.
+    sin_condicion = evento.get("sin_condicion")
+
+    if sin_condicion:
+
+        resultado = dict(evento)
+
+        for clave, valor in sin_condicion.items():
+            resultado[clave] = valor
+
+        return resultado, None
+
+    return evento, None
+
+
 # Comprueba si el superviviente tiene un objeto.
 def has_item(discord_id, item):
     inventory = get_inventory(discord_id)
@@ -843,6 +897,144 @@ def use_item(discord_id, item):
         )
 
     return False, (f"❌ No puedes usar {item_name} ahora mismo.")
+
+
+# Intenta crear un objeto combinando ingredientes del inventario.
+def craft_item(discord_id, resultado):
+
+    receta = RECIPES.get(resultado)
+
+    if receta is None:
+        return False, "❌ Esa receta no existe."
+
+    inventario = get_inventory(discord_id)
+
+    cantidades = {entrada["item"]: entrada["quantity"] for entrada in inventario}
+
+    faltantes = []
+
+    for ingrediente, cantidad_necesaria in receta["ingredientes"].items():
+
+        disponible = cantidades.get(ingrediente, 0)
+
+        if disponible < cantidad_necesaria:
+            faltantes.append(f"{ingrediente} ({disponible}/{cantidad_necesaria})")
+
+    if faltantes:
+        return False, "❌ Te faltan materiales: " + ", ".join(faltantes)
+
+    # Consumimos los ingredientes.
+    for ingrediente, cantidad_necesaria in receta["ingredientes"].items():
+        remove_item(discord_id, ingrediente, cantidad_necesaria)
+
+    # Entregamos el resultado.
+    add_item(discord_id, resultado)
+
+    mensaje = receta.get("mensaje", f"✅ Has creado: {resultado}.")
+
+    return True, mensaje
+
+
+# Consulta rápida de los Overos actuales de un superviviente.
+def get_overos(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT overos
+        FROM survivors
+        WHERE discord_id = ?
+        """,
+        (discord_id,),
+    )
+
+    result = cursor.fetchone()
+
+    connection.close()
+
+    if result:
+        return result["overos"]
+
+    return 0
+
+
+# Compra un objeto de la tienda usando Overos.
+def buy_item(discord_id, item, cantidad=1):
+
+    if item not in SHOP_ITEMS:
+        return False, "❌ Ese objeto no está disponible en la tienda."
+
+    if cantidad <= 0:
+        return False, "❌ La cantidad debe ser mayor a cero."
+
+    data = ITEMS.get(item)
+
+    if data is None:
+        return False, "❌ Ese objeto no existe."
+
+    costo_total = data["valor"] * cantidad
+
+    overos_actuales = get_overos(discord_id)
+
+    if overos_actuales < costo_total:
+        return False, (
+            f"❌ No tienes suficientes Overos. "
+            f"Necesitas {costo_total} y tienes {overos_actuales}."
+        )
+
+    add_overos(discord_id, -costo_total)
+    add_item(discord_id, item, cantidad)
+
+    return True, (
+        f"{data.get('emoji', '📦')} Has comprado {item} x{cantidad} "
+        f"por **{costo_total} Overos**."
+    )
+
+
+# Vende un objeto del inventario a cambio de Overos.
+def sell_item(discord_id, item, cantidad=1):
+
+    # Normalizamos el nombre del objeto.
+    item_name = None
+
+    for name in ITEMS:
+        if name.lower() == item.lower():
+            item_name = name
+            break
+
+    if item_name is None:
+        return False, "❌ Ese objeto no existe."
+
+    data = ITEMS[item_name]
+
+    if data.get("categoria") in CATEGORIAS_NO_VENDIBLES:
+        return False, f"❌ No puedes vender {item_name}."
+
+    if cantidad <= 0:
+        return False, "❌ La cantidad debe ser mayor a cero."
+
+    inventario = get_inventory(discord_id)
+
+    cantidades = {entrada["item"]: entrada["quantity"] for entrada in inventario}
+
+    disponible = cantidades.get(item_name, 0)
+
+    if disponible < cantidad:
+        return False, (
+            f"❌ No tienes suficientes. Tienes {disponible} y "
+            f"quieres vender {cantidad}."
+        )
+
+    pago = round(data["valor"] * PORCENTAJE_VENTA * cantidad)
+
+    remove_item(discord_id, item_name, cantidad)
+    add_overos(discord_id, pago)
+
+    return True, (
+        f"{data.get('emoji', '📦')} Has vendido {item_name} x{cantidad} "
+        f"por **{pago} Overos**."
+    )
 
 
 # Limpia todo el inventario de un superviviente.
@@ -1021,3 +1213,135 @@ def reduce_active_effects(discord_id):
 
     connection.commit()
     connection.close()
+
+
+# ==========================================
+# FUNCIONES DEL REFUGIO (FASE 6)
+# ==========================================
+
+
+# Obtiene el refugio del jugador, o crea uno nivel 1 si no tiene.
+def get_or_create_shelter(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    # Primero, buscamos el ID interno del superviviente
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+
+    if survivor is None:
+        connection.close()
+        return None
+
+    survivor_id = survivor["id"]
+
+    # Buscamos su refugio
+    cursor.execute("SELECT * FROM shelters WHERE survivor_id = ?", (survivor_id,))
+    shelter = cursor.fetchone()
+
+    # Si no tiene refugio, le creamos uno nivel 1 por defecto
+    if not shelter:
+        cursor.execute(
+            "INSERT INTO shelters (survivor_id, level) VALUES (?, 1)", (survivor_id,)
+        )
+        connection.commit()
+        cursor.execute("SELECT * FROM shelters WHERE survivor_id = ?", (survivor_id,))
+        shelter = cursor.fetchone()
+
+    connection.close()
+    return shelter
+
+
+# Intenta mejorar el refugio del jugador al siguiente nivel.
+def upgrade_shelter(discord_id):
+    shelter = get_or_create_shelter(discord_id)
+    if not shelter:
+        return False, "❌ No tienes un perfil de superviviente."
+
+    nivel_actual = shelter["level"]
+    nivel_siguiente = nivel_actual + 1
+
+    # Revisamos si ya alcanzó el nivel máximo
+    if nivel_siguiente not in SHELTER_LEVELS:
+        return False, "❌ Tu refugio ya está al nivel máximo."
+
+    datos_siguiente = SHELTER_LEVELS[nivel_siguiente]
+    overos_requeridos = datos_siguiente["costo_overos"]
+    items_requeridos = datos_siguiente["costo_items"]
+
+    # 1. Comprobamos si tiene los Overos necesarios
+    if get_overos(discord_id) < overos_requeridos:
+        return False, f"❌ Necesitas {overos_requeridos} Overos para mejorar."
+
+    # 2. Comprobamos si tiene los objetos necesarios
+    inventario = get_inventory(discord_id)
+    cantidades = {item["item"]: item["quantity"] for item in inventario}
+
+    faltantes = []
+    for item_req, cant_req in items_requeridos.items():
+        if cantidades.get(item_req, 0) < cant_req:
+            faltantes.append(f"{item_req} (x{cant_req})")
+
+    if faltantes:
+        return False, "❌ Faltan materiales: " + ", ".join(faltantes)
+
+    # 3. Si tiene todo, cobramos los materiales y overos
+    add_overos(discord_id, -overos_requeridos)
+    for item_req, cant_req in items_requeridos.items():
+        remove_item(discord_id, item_req, cant_req)
+
+    # 4. Subimos de nivel el refugio en la base de datos
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE shelters SET level = ? WHERE id = ?", (nivel_siguiente, shelter["id"])
+    )
+    connection.commit()
+    connection.close()
+
+    return True, f"⛺ ¡Refugio mejorado a **{datos_siguiente['nombre']}**!"
+
+
+# Permite al jugador dormir en el refugio para recuperar salud.
+def rest_in_shelter(discord_id):
+    shelter = get_or_create_shelter(discord_id)
+    if not shelter:
+        return False, "❌ No tienes un perfil."
+
+    nivel_actual = shelter["level"]
+    datos_refugio = SHELTER_LEVELS[nivel_actual]
+
+    # Comprobamos si ya durmió hace poco (Cooldown)
+    if shelter["last_rest"]:
+        ultimo_descanso = datetime.strptime(shelter["last_rest"], "%Y-%m-%d %H:%M:%S")
+
+        # ¡CORRECCIÓN AQUÍ! Cambiado 'horas' por 'hours'
+        tiempo_necesario = timedelta(hours=datos_refugio["cooldown_horas"])
+
+        if datetime.now() < ultimo_descanso + tiempo_necesario:
+            restante = (ultimo_descanso + tiempo_necesario) - datetime.now()
+            horas = restante.seconds // 3600
+            minutos = (restante.seconds % 3600) // 60
+            return (
+                False,
+                f"⏳ Debes esperar {horas}h {minutos}m para volver a descansar.",
+            )
+
+    # Si puede dormir, actualizamos la fecha de último descanso
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE shelters SET last_rest = ? WHERE id = ?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), shelter["id"]),
+    )
+    connection.commit()
+    connection.close()
+
+    # Curamos al jugador según el nivel del refugio
+    cura = datos_refugio["cura_descanso"]
+    update_health(discord_id, cura)
+
+    return (
+        True,
+        f"💤 Descansaste en tu refugio y recuperaste **{cura} puntos de vida**.",
+    )

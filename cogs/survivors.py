@@ -1,12 +1,16 @@
 from config.events import EVENTS
+from config.locations import LOCATIONS
 from datetime import datetime, timedelta
 import random
 
 import discord
 from discord.ext import commands
 
+from config.shelter import SHELTER_LEVELS
 from config.items import ITEMS
 from config.effects import SURVIVOR_EFFECTS
+from config.recipes import RECIPES
+from config.shop import SHOP_ITEMS
 from utils.users import (
     get_or_create_survivor,
     add_overos,
@@ -27,6 +31,15 @@ from utils.users import (
     reduce_active_effects,
     get_active_effects,
     has_active_effect,
+    remove_item,
+    resolve_event_condition,
+    craft_item,
+    get_overos,
+    buy_item,
+    sell_item,
+    get_or_create_shelter,
+    rest_in_shelter,
+    upgrade_shelter,
 )
 
 
@@ -65,6 +78,48 @@ class CantidadModal(discord.ui.Modal):
         )
 
 
+class TransaccionModal(discord.ui.Modal):
+
+    def __init__(self, objeto, tipo):
+
+        # tipo: "comprar" o "vender"
+
+        super().__init__(title=f"Cantidad a {tipo}")
+
+        self.objeto = objeto
+        self.tipo = tipo
+
+        self.cantidad = discord.ui.TextInput(
+            label="Cantidad", placeholder="Ejemplo: 3", required=True
+        )
+
+        self.add_item(self.cantidad)
+
+    async def on_submit(self, interaction: discord.Interaction):
+
+        try:
+
+            cantidad = int(self.cantidad.value)
+
+        except ValueError:
+
+            await interaction.response.send_message(
+                "❌ La cantidad debe ser un número.", ephemeral=True
+            )
+
+            return
+
+        if self.tipo == "comprar":
+
+            exito, mensaje = buy_item(str(interaction.user.id), self.objeto, cantidad)
+
+        else:
+
+            exito, mensaje = sell_item(str(interaction.user.id), self.objeto, cantidad)
+
+        await interaction.response.send_message(mensaje)
+
+
 class Survivors(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -100,12 +155,6 @@ class Survivors(commands.Cog):
         # Obtenemos todos los efectos del jugador.
         effects = get_effects(str(interaction.user.id))
         active_effects = get_active_effects(str(interaction.user.id))
-
-        for effect in effects:
-            print(dict(effect))
-
-        for effect in active_effects:
-            print(dict(effect))
 
         fecha = datetime.strptime(survivor["created_at"], "%Y-%m-%d %H:%M:%S").strftime(
             "%d/%m/%Y"
@@ -392,11 +441,232 @@ class Survivors(commands.Cog):
             "🎒 Selecciona un objeto para usar:", view=view
         )
 
-    # Primer comando de exploración.
+    # Comando de crafting: combina objetos del inventario.
+    @discord.app_commands.command(
+        name="crear",
+        description="Combina objetos de tu inventario para crear algo nuevo.",
+    )
+    async def crear(self, interaction: discord.Interaction):
+
+        if not has_survivor(str(interaction.user.id)):
+            await interaction.response.send_message(
+                "❌ Primero debes crear tu perfil con **/perfil**."
+            )
+            return
+
+        opciones = []
+
+        for resultado, receta in RECIPES.items():
+
+            data = ITEMS.get(resultado)
+
+            ingredientes_texto = ", ".join(
+                f"{cantidad}x {ingrediente}"
+                for ingrediente, cantidad in receta["ingredientes"].items()
+            )
+
+            opciones.append(
+                discord.SelectOption(
+                    label=resultado,
+                    description=ingredientes_texto[:100],
+                    emoji=data.get("emoji") if data else "🛠️",
+                    value=resultado,
+                )
+            )
+
+        select = discord.ui.Select(
+            placeholder="Selecciona qué quieres crear...", options=opciones
+        )
+
+        async def callback(interaction_select: discord.Interaction):
+
+            resultado = select.values[0]
+
+            exito, mensaje = craft_item(str(interaction_select.user.id), resultado)
+
+            await interaction_select.response.send_message(mensaje)
+
+        select.callback = callback
+
+        view = discord.ui.View()
+
+        view.add_item(select)
+
+        await interaction.response.send_message(
+            "🛠️ Selecciona qué quieres crear:", view=view
+        )
+
+    # Muestra los objetos disponibles en la tienda.
+    @discord.app_commands.command(
+        name="tienda", description="Muestra los objetos disponibles para comprar."
+    )
+    async def tienda(self, interaction: discord.Interaction):
+
+        paginas = []
+
+        objetos_por_pagina = 5
+
+        for i in range(0, len(SHOP_ITEMS), objetos_por_pagina):
+
+            grupo = SHOP_ITEMS[i : i + objetos_por_pagina]
+
+            embed = discord.Embed(
+                title="🛒 Tienda del superviviente",
+                description=f"Página {len(paginas) + 1}",
+                color=discord.Color.gold(),
+            )
+
+            for nombre in grupo:
+
+                data = ITEMS.get(nombre)
+
+                if data is None:
+                    continue
+
+                embed.add_field(
+                    name=f"{data.get('emoji', '📦')} {nombre} — {data['valor']} Overos",
+                    value=data["descripcion"],
+                    inline=False,
+                )
+
+            paginas.append(embed)
+
+        await interaction.response.send_message(embed=paginas[0])
+
+    # Compra un objeto de la tienda.
+    @discord.app_commands.command(
+        name="comprar", description="Compra objetos de la tienda con tus Overos."
+    )
+    async def comprar(self, interaction: discord.Interaction):
+
+        if not has_survivor(str(interaction.user.id)):
+            await interaction.response.send_message(
+                "❌ Primero debes crear tu perfil con **/perfil**."
+            )
+            return
+
+        opciones = []
+
+        for nombre in SHOP_ITEMS:
+
+            data = ITEMS.get(nombre)
+
+            if data is None:
+                continue
+
+            opciones.append(
+                discord.SelectOption(
+                    label=nombre,
+                    description=f"{data['valor']} Overos — {data['descripcion'][:80]}",
+                    emoji=data.get("emoji", "📦"),
+                    value=nombre,
+                )
+            )
+
+        select = discord.ui.Select(
+            placeholder="Selecciona qué quieres comprar...", options=opciones
+        )
+
+        async def callback(interaction_select: discord.Interaction):
+
+            objeto = select.values[0]
+
+            await interaction_select.response.send_modal(
+                TransaccionModal(objeto, "comprar")
+            )
+
+        select.callback = callback
+
+        view = discord.ui.View()
+
+        view.add_item(select)
+
+        await interaction.response.send_message(
+            f"🛒 Tienes **{get_overos(str(interaction.user.id))} Overos**. "
+            "Selecciona qué quieres comprar:",
+            view=view,
+        )
+
+    # Vende un objeto del inventario.
+    @discord.app_commands.command(
+        name="vender", description="Vende objetos de tu inventario a cambio de Overos."
+    )
+    async def vender(self, interaction: discord.Interaction):
+
+        items = get_inventory(str(interaction.user.id))
+
+        if not items:
+
+            await interaction.response.send_message("🎒 Inventario vacío.")
+            return
+
+        opciones = []
+
+        for item in items:
+
+            data = ITEMS.get(item["item"])
+
+            if data is None or data.get("categoria") == "Especial":
+                continue
+
+            precio_venta = round(data["valor"] * 0.5)
+
+            opciones.append(
+                discord.SelectOption(
+                    label=f"{item['item']} (x{item['quantity']})",
+                    description=f"Vender por {precio_venta} Overos c/u",
+                    emoji=data.get("emoji", "📦"),
+                    value=item["item"],
+                )
+            )
+
+        if not opciones:
+
+            await interaction.response.send_message(
+                "❌ No tienes objetos que puedas vender."
+            )
+            return
+
+        select = discord.ui.Select(
+            placeholder="Selecciona qué quieres vender...", options=opciones
+        )
+
+        async def callback(interaction_select: discord.Interaction):
+
+            objeto = select.values[0]
+
+            await interaction_select.response.send_modal(
+                TransaccionModal(objeto, "vender")
+            )
+
+        select.callback = callback
+
+        view = discord.ui.View()
+
+        view.add_item(select)
+
+        await interaction.response.send_message(
+            "🎒 Selecciona qué quieres vender:", view=view
+        )
+
+    # Primer comando de exploración (Actualizado).
     @discord.app_commands.command(
         name="explorar", description="Explora los alrededores en busca de algo..."
     )
-    async def explorar(self, interaction: discord.Interaction):
+    @discord.app_commands.describe(
+        lugar="Lugar específico a explorar (opcional). Si no eliges, exploras alrededores genéricos."
+    )
+    @discord.app_commands.choices(
+        lugar=[
+            discord.app_commands.Choice(name=f"{data['emoji']} {nombre}", value=nombre)
+            for nombre, data in LOCATIONS.items()
+        ]
+    )
+    async def explorar(
+        self,
+        interaction: discord.Interaction,
+        lugar: discord.app_commands.Choice[str] = None,
+    ):
 
         if not has_survivor(str(interaction.user.id)):
             await interaction.response.send_message(
@@ -439,9 +709,57 @@ class Survivors(commands.Cog):
 
         print("Última exploración:", last_explore)
 
-        evento = random.choices(
-            EVENTS, weights=[evento["chance"] for evento in EVENTS], k=1
-        )[0]
+        lugar_nombre = lugar.value if lugar else None
+
+        # Filtramos los eventos disponibles según el lugar.
+        eventos_disponibles = []
+
+        for evento_posible in EVENTS:
+
+            lugares_evento = evento_posible.get("lugares")
+
+            if not lugares_evento:
+                eventos_disponibles.append(evento_posible)
+
+            elif lugar_nombre and lugar_nombre in lugares_evento:
+                eventos_disponibles.append(evento_posible)
+
+        # Seguridad: si por algún motivo no queda ningún evento
+        if not eventos_disponibles:
+            eventos_disponibles = [
+                evento_posible
+                for evento_posible in EVENTS
+                if not evento_posible.get("lugares")
+            ]
+
+        tiene_moral = has_active_effect(str(interaction.user.id), "moral")
+
+        # Calculamos los pesos de cada evento.
+        pesos = []
+
+        for evento_posible in eventos_disponibles:
+
+            peso = evento_posible["chance"]
+
+            if tiene_moral:
+
+                if evento_posible["damage"] > 0:
+                    peso *= 0.8
+
+                if evento_posible["item"] is not None:
+                    peso *= 1.1
+
+            pesos.append(peso)
+
+        evento = random.choices(eventos_disponibles, weights=pesos, k=1)[0]
+
+        # Si el evento tiene condiciones (reacciona a objetos del inventario)
+        evento, item_consumido = resolve_event_condition(
+            str(interaction.user.id), evento
+        )
+
+        if tiene_moral:
+            print("🍫 El superviviente tiene moral alta")
 
         tiene_energia = has_active_effect(str(interaction.user.id), "energia")
 
@@ -460,48 +778,161 @@ class Survivors(commands.Cog):
 
         reduce_active_effects(str(interaction.user.id))
 
-        # Empezamos el mensaje con el texto base del evento.
-        mensaje = evento["mensaje"]
-
         # Obtenemos la cantidad de Overos del evento.
         if isinstance(evento["overos"], tuple):
             cantidad_overos = random.randint(evento["overos"][0], evento["overos"][1])
         else:
             cantidad_overos = evento["overos"]
 
+        moral_bonus = 0
+
+        if tiene_moral and cantidad_overos > 0:
+            moral_bonus = max(1, round(cantidad_overos * 0.1))
+            cantidad_overos += moral_bonus
+
         # Si el evento entrega Overos, los agregamos al jugador.
         if cantidad_overos > 0:
             add_overos(str(interaction.user.id), cantidad_overos)
 
         # Construimos el mensaje que verá el jugador.
-        mensaje = evento["mensaje"]
+        if lugar_nombre:
+            emoji_lugar = LOCATIONS[lugar_nombre]["emoji"]
+            mensaje = f"{emoji_lugar} **{lugar_nombre}**\n\n" + evento["mensaje"]
+        else:
+            mensaje = evento["mensaje"]
 
         # Si encontró Overos, lo indicamos.
         if cantidad_overos > 0:
-            mensaje += f"\n\n🦴 Has encontrado " f"**{cantidad_overos} Overos**."
+            mensaje += f"\n\n🦴 Has encontrado **{cantidad_overos} Overos**."
 
-        # Si el evento hace daño, sucede esto
-        if evento["damage"] > 0:
-            update_health(str(interaction.user.id), -evento["damage"])
+        if moral_bonus > 0:
+            mensaje += (
+                f"\n\n🍫 Tu buen ánimo te ayudó a encontrar "
+                f"**{moral_bonus} Overos** extra."
+            )
 
-        if evento["damage"] > 0:
-            mensaje += f"\n\n❤️ Has perdido " f"**{evento['damage']}** puntos de vida."
+        if evitar_dano:
+            mensaje += (
+                "\n\n⚡ Gracias a tu energía, lograste esquivar el daño a tiempo."
+            )
+        else:
+            if evento["damage"] > 0:
+                update_health(str(interaction.user.id), -evento["damage"])
+                mensaje += f"\n\n❤️ Has perdido **{evento['damage']}** puntos de vida."
 
-        # Si el evento aplica un efecto, lo agregamos al jugador
-        # y lo anotamos en el mensaje.
-        if evento["effect"] is not None:
-            add_effect(str(interaction.user.id), evento["effect"])
-            mensaje += f"\n\n🧪 Nuevo efecto: **{evento['effect']}**"
+            if evento["effect"] is not None:
+                add_effect(str(interaction.user.id), evento["effect"])
+                mensaje += f"\n\n🧪 Nuevo efecto: **{evento['effect']}**"
 
-        # Si el evento entrega un objeto, lo agregamos al inventario.
         if evento["item"] is not None:
             add_item(str(interaction.user.id), evento["item"])
             mensaje += f"\n\n🎒 Has encontrado: **{evento['item']}**."
 
-        # Una sola respuesta, al final, con el mensaje completo.
+        if item_consumido is not None:
+            remove_item(str(interaction.user.id), item_consumido, 1)
+            mensaje += f"\n\n🔧 Has usado: **{item_consumido}**."
+
         update_last_explore(str(interaction.user.id))
 
         await interaction.response.send_message(mensaje)
+
+    # Comando interactivo del refugio (Fase 6)
+    @discord.app_commands.command(
+        name="refugio", description="Gestiona tu refugio, descansa y mejóralo."
+    )
+    async def refugio(self, interaction: discord.Interaction):
+
+        if not has_survivor(str(interaction.user.id)):
+            await interaction.response.send_message(
+                "❌ Primero debes crear tu perfil con **/perfil**."
+            )
+            return
+
+        # Obtenemos los datos actuales
+        shelter = get_or_create_shelter(str(interaction.user.id))
+        nivel = shelter["level"]
+        datos_actuales = SHELTER_LEVELS[nivel]
+
+        # Creamos un Embed bonito para mostrar la base
+        embed = discord.Embed(
+            title=f"⛺ Refugio: {datos_actuales['nombre']} (Nivel {nivel})",
+            description=datos_actuales["descripcion"],
+            color=discord.Color.blue(),
+        )
+        embed.add_field(
+            name="💤 Curación al dormir",
+            value=f"+{datos_actuales['cura_descanso']} Vida",
+        )
+        embed.add_field(
+            name="⏳ Tiempo de espera",
+            value=f"{datos_actuales['cooldown_horas']} Horas",
+        )
+
+        # Mostramos los requisitos del siguiente nivel si existe
+        if nivel + 1 in SHELTER_LEVELS:
+            datos_siguientes = SHELTER_LEVELS[nivel + 1]
+            req_overos = datos_siguientes["costo_overos"]
+            req_items = ", ".join(
+                [f"{k} (x{v})" for k, v in datos_siguientes["costo_items"].items()]
+            )
+            if not req_items:
+                req_items = "Ninguno"
+
+            embed.add_field(
+                name=f"⬆️ Requisitos Nivel {nivel + 1}",
+                value=f"**Overos:** {req_overos}\n**Objetos:** {req_items}",
+                inline=False,
+            )
+
+        # Creamos los botones interactivos
+        class RefugioView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=120)
+
+            @discord.ui.button(
+                label="Descansar", emoji="💤", style=discord.ButtonStyle.success
+            )
+            async def btn_descansar(
+                self, btn_interact: discord.Interaction, button: discord.ui.Button
+            ):
+                if btn_interact.user.id != interaction.user.id:
+                    return await btn_interact.response.send_message(
+                        "❌ Este no es tu refugio.", ephemeral=True
+                    )
+
+                exito, mensaje = rest_in_shelter(str(btn_interact.user.id))
+                await btn_interact.response.send_message(mensaje, ephemeral=not exito)
+
+        @discord.ui.button(
+            label="Mejorar Refugio", emoji="⬆️", style=discord.ButtonStyle.primary
+        )
+        async def btn_mejorar(
+            self, btn_interact: discord.Interaction, button: discord.ui.Button
+        ):
+            if btn_interact.user.id != interaction.user.id:
+                return await btn_interact.response.send_message(
+                    "❌ Este no es tu refugio.", ephemeral=True
+                )
+
+            exito, mensaje = upgrade_shelter(str(btn_interact.user.id))
+
+            # ¡CORRECCIÓN AQUÍ! Agregado 'ephemeral=not exito'
+            await btn_interact.response.send_message(mensaje, ephemeral=not exito)
+
+            # Si mejoró con éxito, desactivamos los botones para que vuelva a usar el comando
+            if exito:
+                for item in self.children:
+                    item.disabled = True
+                await btn_interact.message.edit(view=self)
+
+        view = RefugioView()
+
+        # Desactivamos el botón de mejorar si está al nivel máximo
+        if nivel + 1 not in SHELTER_LEVELS:
+            view.children[1].disabled = True
+            view.children[1].label = "Nivel Máximo"
+
+        await interaction.response.send_message(embed=embed, view=view)
 
     # Comando para reiniciar el perfil.
     @discord.app_commands.command(
@@ -509,7 +940,6 @@ class Survivors(commands.Cog):
     )
     async def reset(self, interaction: discord.Interaction):
 
-        # Solo tú puedes usarlo.
         if interaction.user.id != 1414035229286596719:
             await interaction.response.send_message(
                 "❌ No tienes permiso para usar este comando.", ephemeral=True
