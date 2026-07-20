@@ -19,9 +19,17 @@ RECIPES = {
     },
     "Cóctel molotov": {
         "ingredientes": {
+            "Gasolina": 1,
             "Botella de agua": 1,
+            "Cuerda": 1,
+        },
+        "mensaje": "🧨 Llenas la botella con gasolina y usas la cuerda como mecha. ¡Tienes un explosivo improvisado listo para el combate!",
+    },
+    "Cuchillo de caza": {
+        "ingredientes": {
+            "Navaja": 1,
             "Alcohol medicinal": 1,
         },
-        "mensaje": "🧨 Combinas la botella con el alcohol y creas un arma improvisada.",
+        "mensaje": "🩺 Combinas las vendas con alcohol medicinal y creas un vendaje estéril.",
     },
 }

@@ -742,9 +742,28 @@ class Survivors(commands.Cog):
                 add_effect(str(interaction.user.id), evento["effect"])
                 mensaje += f"\n\n🧪 Nuevo efecto: **{evento['effect']}**"
 
-        if evento["item"] is not None:
-            add_item(str(interaction.user.id), evento["item"])
-            mensaje += f"\n\n🎒 Has encontrado: **{evento['item']}**."
+        # --- NUEVO SISTEMA DE MÚLTIPLES OBJETOS ---
+        items_encontrados = []
+
+        # 1. Compatibilidad con eventos antiguos (un solo objeto)
+        if evento.get("item") is not None:
+            add_item(str(interaction.user.id), evento["item"], 1)
+            items_encontrados.append(f"**{evento['item']} (x1)**")
+
+        # 2. Nuevo sistema (lista de objetos con probabilidad)
+        if "items" in evento:
+            for loot in evento["items"]:
+                # Comprobar si el jugador tiene la suerte de encontrar este objeto
+                if random.random() <= (loot["chance"] / 100.0):
+                    # Generar una cantidad aleatoria
+                    cantidad = random.randint(loot["cantidad"][0], loot["cantidad"][1])
+                    if cantidad > 0:
+                        add_item(str(interaction.user.id), loot["item"], cantidad)
+                        items_encontrados.append(f"**{loot['item']} (x{cantidad})**")
+
+        # Si encontró al menos un objeto, agregarlo al mensaje
+        if items_encontrados:
+            mensaje += f"\n\n🎒 Has encontrado: {', '.join(items_encontrados)}."
 
         if item_consumido is not None:
             remove_item(str(interaction.user.id), item_consumido, 1)

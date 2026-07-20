@@ -14,6 +14,12 @@ EQUIPMENT = {
         "emoji": "🏏",
         "descripcion": "Improvisado pero devastador contra los infectados.",
     },
+    "Bate de béisbol": {
+        "tipo": "arma",
+        "descripcion": "Un bate de aluminio ideal para defenderse a corta distancia sin gastar balas.",
+        "emoji": "🏏",
+        "bonus_dano": 15,
+    },
     "Pistola de 9mm": {
         "tipo": "arma",
         "bonus_dano": 30,
@@ -46,3 +52,23 @@ EQUIPMENT = {
         "descripcion": "Protección militar pesada. Absorbe impactos balísticos y golpes fuertes.",
     },
 }
+
+
+# Nota de diseño: Si ya tienes armaduras creadas o planeas añadirlas en el futuro,
+# puedes agregarlas aquí siguiendo este formato de ejemplo:
+# "Chaleco táctico": {
+#     "tipo": "armadura",
+#     "descripcion": "Protección de kevlar que absorbe impactos corporales.",
+#     "emoji": "🦺",
+#     "reduccion_dano": 20,  # Esto reducirá un 20% el daño de los enemigos en /cazar
+# }
+#
+# Formato para agregar una nueva arma equipable
+#
+#   "Pistola de 9mm": {
+#        "tipo": "arma",
+#        "bonus_dano": 30,
+#        "emoji": "🔫",
+#        "descripcion": "Un arma de fuego fiable. Las balas valen oro.",
+#    },
+#
