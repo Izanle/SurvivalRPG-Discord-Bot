@@ -28,7 +28,7 @@ RECIPES = {
     "Cuchillo de caza": {
         "ingredientes": {
             "Navaja": 1,
-            "Alcohol medicinal": 1,
+            "Chatarra": 1,
         },
         "mensaje": "🩺 Combinas las vendas con alcohol medicinal y creas un vendaje estéril.",
     },

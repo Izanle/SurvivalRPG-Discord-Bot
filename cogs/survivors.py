@@ -655,25 +655,35 @@ class Survivors(commands.Cog):
         if lugar:
             lugar_nombre = lugar.value if hasattr(lugar, "value") else str(lugar)
 
-        eventos_disponibles = []
-        for evento_posible in EVENTS:
-            lugares_evento = evento_posible.get("lugares")
-            if not lugares_evento:
-                eventos_disponibles.append(evento_posible)
-            elif lugar_nombre and lugar_nombre in lugares_evento:
-                eventos_disponibles.append(evento_posible)
+        lugar_nombre = None
+        if lugar:
+            lugar_nombre = lugar.value if hasattr(lugar, "value") else str(lugar)
 
-        if not eventos_disponibles:
-            eventos_disponibles = [e for e in EVENTS if not e.get("lugares")]
+        # Separamos limpiamente los tipos de eventos
+        eventos_especificos = [
+            e for e in EVENTS if e.get("lugares") and lugar_nombre in e["lugares"]
+        ]
+        eventos_globales = [e for e in EVENTS if not e.get("lugares")]
+
+        # Determinamos qué grupo usar para la exploración
+        if lugar_nombre and eventos_especificos:
+            # 75% de probabilidad de evento temático de la zona, 25% de evento global genérico
+            if random.random() <= 0.75:
+                eventos_disponibles = eventos_especificos
+            else:
+                eventos_disponibles = eventos_globales
+        else:
+            # Si no eligió lugar o el lugar no tiene eventos configurados, usamos globales
+            eventos_disponibles = eventos_globales
 
         tiene_moral = has_active_effect(str(interaction.user.id), "moral")
         pesos = []
         for evento_posible in eventos_disponibles:
             peso = evento_posible["chance"]
             if tiene_moral:
-                if evento_posible["damage"] > 0:
+                if evento_posible.get("damage", 0) > 0:
                     peso *= 0.8
-                if evento_posible["item"] is not None:
+                if evento_posible.get("item") is not None:
                     peso *= 1.1
             pesos.append(peso)
 
@@ -686,8 +696,8 @@ class Survivors(commands.Cog):
         evitar_dano = False
         if (
             tiene_energia
-            and evento["damage"] > 0
-            and evento["damage"] <= 5
+            and evento.get("damage", 0) > 0
+            and evento.get("damage", 0) <= 5
             and random.random() <= 0.5
         ):
             evitar_dano = True
@@ -707,7 +717,7 @@ class Survivors(commands.Cog):
         clima_nombre, clima_data, es_dia = get_current_weather()
 
         peligro_extra = clima_data["peligro"] + (15 if not es_dia else 0)
-        dano_final = evento["damage"]
+        dano_final = evento.get("damage", 0)
         if dano_final > 0:
             dano_final = round(dano_final * (1 + (peligro_extra / 100)))
 
