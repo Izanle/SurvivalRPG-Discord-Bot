@@ -26,6 +26,10 @@ MODULES = [
     "config.effects",
     "config.events",
     "config.status",
+    "config.npcs",
+    "config.recipes" "config.shop",
+    "config.shelter",
+    "config.locations",
     "utils.users",
     "data.database",
 ]
