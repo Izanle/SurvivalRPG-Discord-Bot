@@ -41,4 +41,14 @@ QUESTS = {
         "recompensa_item": "Botiquín",
         "emoji": "🏥",
     },
+    "Suministros": {
+        "tipo": "exploracion",
+        "titulo": "Ayuda humanitaria",
+        "descripcion": "La Doctora necesita algunos suministros para atender a sus pacientes",
+        "target": "Comida enlatada",
+        "required": 3,
+        "recompensa_overos": 200,
+        "recompensa_item": "Botiquín",
+        "emoji": "🏥",
+    },
 }
