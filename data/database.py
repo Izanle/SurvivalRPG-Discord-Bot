@@ -103,5 +103,60 @@ def init_database():
         )
     """)
 
+    # NUEVAS TABLAS (FASE 11): Estadísticas y Logros
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stats (
+            survivor_id INTEGER PRIMARY KEY,
+            explorations INTEGER DEFAULT 0,
+            enemies_defeated INTEGER DEFAULT 0,
+            quests_completed INTEGER DEFAULT 0,
+            
+            FOREIGN KEY (survivor_id)
+            REFERENCES survivors(id)
+            ON DELETE CASCADE
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS achievements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            survivor_id INTEGER NOT NULL,
+            achievement_id TEXT NOT NULL,
+            unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY (survivor_id)
+            REFERENCES survivors(id)
+            ON DELETE CASCADE,
+            
+            UNIQUE(survivor_id, achievement_id)
+        )
+    """)
+
+    # NUEVAS COLUMNAS (FASE 12): Sistema de Niveles y Experiencia
+    try:
+        cursor.execute("ALTER TABLE survivors ADD COLUMN level INTEGER DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass  # La columna ya existe
+
+    try:
+        cursor.execute("ALTER TABLE survivors ADD COLUMN xp INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # La columna ya existe
+
+    # NUEVAS COLUMNAS (SISTEMA DE EQUIPAMIENTO)
+    try:
+        cursor.execute(
+            "ALTER TABLE survivors ADD COLUMN arma_equipada TEXT DEFAULT NULL"
+        )
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute(
+            "ALTER TABLE survivors ADD COLUMN armadura_equipada TEXT DEFAULT NULL"
+        )
+    except sqlite3.OperationalError:
+        pass
+
     connection.commit()
     connection.close()

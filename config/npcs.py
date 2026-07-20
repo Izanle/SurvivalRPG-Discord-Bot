@@ -1,6 +1,4 @@
 # Configuración de NPCs (Fase 7)
-import random
-
 NPCS = {
     "El Mercader Errante": {
         "emoji": "🎒",

@@ -1499,7 +1499,123 @@ def claim_quest_reward(discord_id):
     msg = f"✅ ¡Misión completada! Has ganado **{quest_data['recompensa_overos']} Overos**"
     if quest_data["recompensa_item"]:
         msg += f" y **{quest_data['recompensa_item']}**."
+
+    # --- LOGROS: Revisamos si completó su logro de misiones ---
+    logros_desbloqueados = update_stat(discord_id, "quests_completed")
+    for logro in logros_desbloqueados:
+        msg += (
+            f"\n\n🏆 **¡LOGRO DESBLOQUEADO!** {logro['emoji']} **{logro['nombre']}**\n*{logro['descripcion']}*\n🎁 Recompensa: 🦴 {logro['recompensa_overos']}"
+            + (f" y 📦 {logro['recompensa_item']}" if logro["recompensa_item"] else "")
+        )
+
     return True, msg
+
+
+# ==========================================
+# SISTEMA DE LOGROS Y ESTADÍSTICAS (FASE 11)
+# ==========================================
+
+
+def get_or_create_stats(survivor_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM stats WHERE survivor_id = ?", (survivor_id,))
+    stats = cursor.fetchone()
+    if not stats:
+        cursor.execute("INSERT INTO stats (survivor_id) VALUES (?)", (survivor_id,))
+        connection.commit()
+        cursor.execute("SELECT * FROM stats WHERE survivor_id = ?", (survivor_id,))
+        stats = cursor.fetchone()
+    connection.close()
+    return stats
+
+
+def check_achievements(discord_id):
+    from config.achievements import ACHIEVEMENTS
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+    if not survivor:
+        connection.close()
+        return []
+
+    survivor_id = survivor["id"]
+    stats = get_or_create_stats(survivor_id)
+
+    cursor.execute(
+        "SELECT achievement_id FROM achievements WHERE survivor_id = ?", (survivor_id,)
+    )
+    unlocked = [row["achievement_id"] for row in cursor.fetchall()]
+
+    new_unlocks = []
+
+    for ach_id, ach_data in ACHIEVEMENTS.items():
+        if ach_id in unlocked:
+            continue
+
+        req_type = ach_data["requisito"]["tipo"]
+        req_amount = ach_data["requisito"]["cantidad"]
+
+        if stats[req_type] >= req_amount:
+            cursor.execute(
+                "INSERT INTO achievements (survivor_id, achievement_id) VALUES (?, ?)",
+                (survivor_id, ach_id),
+            )
+            cursor.execute(
+                "UPDATE survivors SET overos = overos + ? WHERE id = ?",
+                (ach_data["recompensa_overos"], survivor_id),
+            )
+            new_unlocks.append(ach_data)
+
+    connection.commit()
+    connection.close()
+
+    # Damos los items de recompensa si los hay
+    for ach in new_unlocks:
+        if ach["recompensa_item"]:
+            add_item(discord_id, ach["recompensa_item"], 1)
+
+    return new_unlocks
+
+
+def update_stat(discord_id, stat_name, amount=1):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+    if not survivor:
+        connection.close()
+        return []
+
+    survivor_id = survivor["id"]
+    get_or_create_stats(survivor_id)
+
+    query = f"UPDATE stats SET {stat_name} = {stat_name} + ? WHERE survivor_id = ?"
+    cursor.execute(query, (amount, survivor_id))
+    connection.commit()
+    connection.close()
+
+    return check_achievements(discord_id)
+
+
+def get_unlocked_achievements(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+    if not survivor:
+        connection.close()
+        return []
+
+    cursor.execute(
+        "SELECT achievement_id, unlocked_at FROM achievements WHERE survivor_id = ?",
+        (survivor["id"],),
+    )
+    achievements = cursor.fetchall()
+    connection.close()
+    return achievements
 
 
 # ==========================================
@@ -1523,3 +1639,135 @@ def get_current_weather():
     es_dia = 6 <= hora < 19  # De 6 AM a 6:59 PM es de día
 
     return clima_actual, WEATHER_TYPES[clima_actual], es_dia
+
+
+# ==========================================
+# SISTEMA DE NIVELES Y EXPERIENCIA (FASE 12)
+# ==========================================
+
+
+def add_xp(discord_id, cantidad_xp):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT id, level, xp FROM survivors WHERE discord_id = ?", (discord_id,)
+    )
+    survivor = cursor.fetchone()
+
+    if not survivor:
+        connection.close()
+        return None
+
+    s_id, nivel_actual, xp_actual = survivor["id"], survivor["level"], survivor["xp"]
+
+    nueva_xp = xp_actual + cantidad_xp
+    # Fórmula de experiencia requerida por nivel: Nivel * 100
+    xp_necesaria = nivel_actual * 100
+
+    subio_nivel = False
+    nuevo_nivel = nivel_actual
+
+    if nueva_xp >= xp_necesaria:
+        nuevo_nivel += 1
+        nueva_xp -= xp_necesaria
+        subio_nivel = True
+
+    cursor.execute(
+        """
+        UPDATE survivors 
+        SET level = ?, xp = ?
+        WHERE id = ?
+    """,
+        (nuevo_nivel, nueva_xp, s_id),
+    )
+
+    connection.commit()
+    connection.close()
+
+    if subio_nivel:
+        return f"\n\n⭐ **¡Felicidades! Has subido al Nivel {nuevo_nivel}!** 🎉"
+    return None
+
+
+# ==========================================
+# SISTEMA DE EQUIPAMIENTO
+# ==========================================
+# ==========================================
+# SISTEMA DE EQUIPAMIENTO
+# ==========================================
+
+
+def get_equipped_gear(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT arma_equipada, armadura_equipada FROM survivors WHERE discord_id = ?",
+        (discord_id,),
+    )
+    gear = cursor.fetchone()
+    connection.close()
+    if gear:
+        return gear["arma_equipada"], gear["armadura_equipada"]
+    return None, None
+
+
+def equip_item(discord_id, item_nombre):
+    from config.equipment import EQUIPMENT
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+
+    if not survivor:
+        connection.close()
+        return False, "❌ No tienes un superviviente registrado."
+
+    # Opción especial para desequipar (quedarse sin nada)
+    if item_nombre == "desequipar_arma":
+        cursor.execute(
+            "UPDATE survivors SET arma_equipada = NULL WHERE id = ?", (survivor["id"],)
+        )
+        connection.commit()
+        connection.close()
+        return True, "🗡️ Has guardado tu arma. Ahora peleas con las manos vacías."
+
+    if item_nombre == "desequipar_armadura":
+        cursor.execute(
+            "UPDATE survivors SET armadura_equipada = NULL WHERE id = ?",
+            (survivor["id"],),
+        )
+        connection.commit()
+        connection.close()
+        return True, "🛡️ Te has quitado la armadura. Ahora vas sin protección corporal."
+
+    eq_data = EQUIPMENT.get(item_nombre)
+    if not eq_data:
+        connection.close()
+        return False, "❌ Este objeto no es equipable."
+
+    # Verificamos que el jugador tenga el objeto en su inventario
+    inv = get_inventory(discord_id)
+    tiene_objeto = any(i["item"] == item_nombre and i["quantity"] > 0 for i in inv)
+    if not tiene_objeto:
+        connection.close()
+        return False, "❌ No tienes este objeto en tu inventario."
+
+    tipo = eq_data["tipo"]  # "arma" o "armadura"
+
+    if tipo == "arma":
+        cursor.execute(
+            "UPDATE survivors SET arma_equipada = ? WHERE id = ?",
+            (item_nombre, survivor["id"]),
+        )
+        msg = f"🗡️ Te has equipado el arma: **{item_nombre}**"
+    else:
+        cursor.execute(
+            "UPDATE survivors SET armadura_equipada = ? WHERE id = ?",
+            (item_nombre, survivor["id"]),
+        )
+        msg = f"🛡️ Te has equipado la protección: **{item_nombre}**"
+
+    connection.commit()
+    connection.close()
+    return True, msg
