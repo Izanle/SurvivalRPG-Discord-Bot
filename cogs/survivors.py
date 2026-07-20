@@ -8,6 +8,7 @@ import random
 import discord
 from discord.ext import commands
 
+from config.quests import QUESTS
 from config.items import ITEMS
 from config.effects import SURVIVOR_EFFECTS
 from config.recipes import RECIPES
@@ -42,6 +43,12 @@ from utils.users import (
     get_or_create_shelter,
     rest_in_shelter,
     upgrade_shelter,
+    get_active_quest,
+    assign_random_quest,
+    claim_quest_reward,
+    abandon_quest,
+    update_quest_progress,
+    get_current_weather,
 )
 
 
@@ -503,14 +510,15 @@ class Survivors(commands.Cog):
             "🎒 Selecciona qué quieres vender:", view=view
         )
 
+    # Comando explorar
     @discord.app_commands.command(
-        name="explorar", description="Explora los alrededores en busca de algo..."
+        name="explorar", description="Explora los alrededores..."
     )
-    @discord.app_commands.describe(lugar="Lugar específico a explorar (opcional).")
+    @discord.app_commands.describe(lugar="Lugar a explorar.")
     @discord.app_commands.choices(
         lugar=[
-            discord.app_commands.Choice(name=f"{data['emoji']} {nombre}", value=nombre)
-            for nombre, data in LOCATIONS.items()
+            discord.app_commands.Choice(name=f"{d['emoji']} {n}", value=n)
+            for n, d in LOCATIONS.items()
         ]
     )
     async def explorar(
@@ -519,20 +527,18 @@ class Survivors(commands.Cog):
         lugar: discord.app_commands.Choice[str] = None,
     ):
         if not has_survivor(str(interaction.user.id)):
-            await interaction.response.send_message(
+            return await interaction.response.send_message(
                 "❌ Primero debes crear tu perfil con **/perfil**."
             )
-            return
 
         survivor = get_or_create_survivor(
             str(interaction.user.id), interaction.user.display_name
         )
         if survivor["status"] == "Muerto":
-            await interaction.response.send_message(
+            return await interaction.response.send_message(
                 "💀 Estás muerto. No puedes explorar hasta volver a la vida.",
                 ephemeral=True,
             )
-            return
 
         increase_effect_progress(str(interaction.user.id))
         update_effects(str(interaction.user.id))
@@ -551,7 +557,10 @@ class Survivors(commands.Cog):
                 )
                 return
 
-        lugar_nombre = lugar.value if lugar else None
+        # VERSIÓN SEGURA: Extrae el nombre sin importar cómo lo envíe Discord
+        lugar_nombre = None
+        if lugar:
+            lugar_nombre = lugar.value if hasattr(lugar, "value") else str(lugar)
 
         eventos_disponibles = []
         for evento_posible in EVENTS:
@@ -593,6 +602,7 @@ class Survivors(commands.Cog):
 
         reduce_active_effects(str(interaction.user.id))
 
+        # --- CÁLCULO BASE DE OVEROS Y MORAL ---
         if isinstance(evento["overos"], tuple):
             cantidad_overos = random.randint(evento["overos"][0], evento["overos"][1])
         else:
@@ -603,9 +613,29 @@ class Survivors(commands.Cog):
             moral_bonus = max(1, round(cantidad_overos * 0.1))
             cantidad_overos += moral_bonus
 
+        # --- INTEGRACIÓN CLIMA Y HORA (FASE 10) ---
+        clima_nombre, clima_data, es_dia = get_current_weather()
+
+        peligro_extra = clima_data["peligro"]
+        if not es_dia:
+            peligro_extra += 15  # La noche castiga más
+
+        # Daño final afectado por el clima
+        dano_final = evento["damage"]
+        if dano_final > 0:
+            dano_final = round(dano_final * (1 + (peligro_extra / 100)))
+
+        # Bono de botín por clima / noche
+        bonus_loot_total = clima_data["loot_bonus"] + (10 if not es_dia else 0)
+        if cantidad_overos > 0 and bonus_loot_total > 0:
+            bonus_clima = max(1, round(cantidad_overos * (bonus_loot_total / 100)))
+            cantidad_overos += bonus_clima
+
+        # Sumamos todos los overos calculados al jugador de golpe
         if cantidad_overos > 0:
             add_overos(str(interaction.user.id), cantidad_overos)
 
+        # --- CONSTRUCCIÓN DEL MENSAJE ---
         if lugar_nombre:
             emoji_lugar = LOCATIONS[lugar_nombre]["emoji"]
             mensaje = f"{emoji_lugar} **{lugar_nombre}**\n\n" + evento["mensaje"]
@@ -615,19 +645,16 @@ class Survivors(commands.Cog):
         if cantidad_overos > 0:
             mensaje += f"\n\n🦴 Has encontrado **{cantidad_overos} Overos**."
         if moral_bonus > 0:
-            mensaje += (
-                f"\n\n🍫 Tu buen ánimo te ayudó a encontrar "
-                f"**{moral_bonus} Overos** extra."
-            )
+            mensaje += f"\n\n🍫 Tu buen ánimo te ayudó a encontrar **{moral_bonus} Overos** extra."
 
         if evitar_dano:
             mensaje += (
                 "\n\n⚡ Gracias a tu energía, lograste esquivar el daño a tiempo."
             )
         else:
-            if evento["damage"] > 0:
-                update_health(str(interaction.user.id), -evento["damage"])
-                mensaje += f"\n\n❤️ Has perdido **{evento['damage']}** puntos de vida."
+            if dano_final > 0:
+                update_health(str(interaction.user.id), -dano_final)
+                mensaje += f"\n\n❤️ Has perdido **{dano_final}** puntos de vida (Afectado por el clima)."
             if evento["effect"] is not None:
                 add_effect(str(interaction.user.id), evento["effect"])
                 mensaje += f"\n\n🧪 Nuevo efecto: **{evento['effect']}**"
@@ -641,6 +668,11 @@ class Survivors(commands.Cog):
             mensaje += f"\n\n🔧 Has usado: **{item_consumido}**."
 
         update_last_explore(str(interaction.user.id))
+
+        # PROGRESO DE MISIÓN (FASE 9)
+        if lugar_nombre:
+            update_quest_progress(str(interaction.user.id), "exploracion", lugar_nombre)
+
         await interaction.response.send_message(mensaje)
 
     @discord.app_commands.command(
@@ -866,6 +898,40 @@ class Survivors(commands.Cog):
             "Mira a tu alrededor. ¿Con quién quieres hablar?", view=view_inicial
         )
 
+    # ==========================================
+    # SISTEMA DE MUNDO DINÁMICO (FASE 10)
+    # ==========================================
+    @discord.app_commands.command(
+        name="clima", description="Revisa la hora y el clima actual en el páramo."
+    )
+    async def clima(self, interaction: discord.Interaction):
+        clima_nombre, clima_data, es_dia = get_current_weather()
+
+        momento_icono = "☀️ De Día" if es_dia else "🌙 De Noche"
+        color_embed = discord.Color.blue() if es_dia else discord.Color.dark_purple()
+
+        embed = discord.Embed(
+            title=f"🌍 Estado del Mundo: {momento_icono}",
+            description=f"**Clima actual:** {clima_data['emoji']} {clima_nombre}\n*{clima_data['desc']}*",
+            color=color_embed,
+        )
+
+        # Mostramos los efectos del clima
+        bono_loot = clima_data["loot_bonus"]
+        peligro = clima_data["peligro"]
+
+        if not es_dia:
+            bono_loot += 10
+            peligro += 15
+            embed.set_footer(
+                text="La noche aumenta un 15% el peligro y un 10% el botín."
+            )
+
+        embed.add_field(name="⚠️ Peligro de daño", value=f"+{peligro}% extra")
+        embed.add_field(name="🎁 Probabilidad de botín", value=f"+{bono_loot}% extra")
+
+        await interaction.response.send_message(embed=embed)
+
     @discord.app_commands.command(
         name="reset", description="Reinicia tu superviviente (solo desarrollo)."
     )
@@ -874,6 +940,315 @@ class Survivors(commands.Cog):
             await interaction.response.send_message(
                 "❌ No tienes permiso para usar este comando.", ephemeral=True
             )
+            return
+        reset_survivor(str(interaction.user.id))
+        await interaction.response.send_message("✅ Superviviente reiniciado.")
+
+    # ==========================================
+    # SISTEMA DE COMBATE PVE (FASE 8)
+    # ==========================================
+
+    @discord.app_commands.command(
+        name="cazar",
+        description="Adéntrate en una zona peligrosa para buscar enemigos.",
+    )
+    async def cazar(self, interaction: discord.Interaction):
+
+        if not has_survivor(str(interaction.user.id)):
+            await interaction.response.send_message(
+                "❌ Primero debes crear tu perfil con **/perfil**."
+            )
+            return
+
+        survivor = get_or_create_survivor(
+            str(interaction.user.id), interaction.user.display_name
+        )
+
+        if survivor["status"] == "Muerto":
+            await interaction.response.send_message(
+                "💀 Estás muerto. No puedes pelear en este estado.", ephemeral=True
+            )
+            return
+
+        # Importamos la configuración localmente para no saturar los imports de arriba
+        from config.enemies import ENEMIES
+
+        # Elegimos un enemigo al azar
+        enemigo_nombre = random.choice(list(ENEMIES.keys()))
+        enemigo_data = dict(ENEMIES[enemigo_nombre])  # Hacemos una copia
+
+        # --- LÓGICA DE LA INTERFAZ DE COMBATE ---
+        class CombatView(discord.ui.View):
+            def __init__(self, original_interact, e_name, e_data):
+                super().__init__(timeout=120)
+                self.original_interact = original_interact
+                self.e_name = e_name
+                self.e_hp = e_data["hp"]
+                self.e_max_hp = e_data["hp"]
+                self.e_data = e_data
+
+            # Función para refrescar la pantalla de combate
+            async def update_combat(self, interact: discord.Interaction, msg: str):
+                s = get_or_create_survivor(
+                    str(interact.user.id), interact.user.display_name
+                )
+                player_hp = s["health"]
+
+                embed = discord.Embed(
+                    title=f"⚔️ Combate: {self.e_data['emoji']} {self.e_name}",
+                    description=msg,
+                    color=self.e_data["color"],
+                )
+                embed.add_field(
+                    name="Tu Vida", value=f"❤️ {player_hp}/100", inline=True
+                )
+                embed.add_field(
+                    name="Vida Enemigo",
+                    value=f"🩸 {self.e_hp}/{self.e_max_hp}",
+                    inline=True,
+                )
+
+                # Si alguien muere, apagamos los botones
+                if self.e_hp <= 0 or player_hp <= 0:
+                    for btn in self.children:
+                        btn.disabled = True
+                    await interact.response.edit_message(embed=embed, view=self)
+                else:
+                    await interact.response.edit_message(embed=embed, view=self)
+
+            @discord.ui.button(
+                label="Atacar", emoji="🗡️", style=discord.ButtonStyle.danger
+            )
+            async def btn_atacar(
+                self, interact: discord.Interaction, button: discord.ui.Button
+            ):
+                if interact.user.id != self.original_interact.user.id:
+                    return
+
+                # Calculamos nuestro daño (Si tiene Cóctel Molotov en inventario, pega más fuerte)
+                player_dmg = random.randint(15, 25)
+                inventory = get_inventory(str(interact.user.id))
+                tiene_arma = any(i["item"] == "Cóctel molotov" for i in inventory)
+
+                if tiene_arma:
+                    player_dmg += 15  # Bonus de arma especial
+
+                self.e_hp -= player_dmg
+                msg = f"🗡️ Has atacado y causado **{player_dmg}** de daño.\n"
+
+                # Si matamos al enemigo
+                if self.e_hp <= 0:
+                    self.e_hp = 0
+                    msg += f"\n💀 **¡Has derrotado a {self.e_name}!**"
+
+                    # Damos Overos
+                    loot_o = random.randint(*self.e_data["loot_overos"])
+                    add_overos(str(interact.user.id), loot_o)
+                    msg += f"\n🦴 Obtuviste **{loot_o} Overos**."
+
+                    # Damos Objeto (50% de probabilidad)
+                    if self.e_data["loot_item"] and random.random() > 0.5:
+                        add_item(str(interact.user.id), self.e_data["loot_item"], 1)
+                        msg += f"\n📦 Dejó caer: **{self.e_data['loot_item']}**."
+                else:
+                    # El enemigo contraataca
+                    enemy_d = random.randint(*self.e_data["daño"])
+                    update_health(str(interact.user.id), -enemy_d)
+                    msg += (
+                        f"\n💥 El enemigo contraataca y te hace **{enemy_d}** de daño."
+                    )
+
+                    # Posible infección o estado
+                    if self.e_data.get("efecto") and random.random() < self.e_data.get(
+                        "efecto_probabilidad", 0
+                    ):
+                        add_effect(str(interact.user.id), self.e_data["efecto"])
+                        msg += f"\n🧪 ¡Te ha causado el estado **{self.e_data['efecto']}**!"
+
+                await self.update_combat(interact, msg)
+
+            @discord.ui.button(
+                label="Curarse", emoji="🩹", style=discord.ButtonStyle.success
+            )
+            async def btn_curar(
+                self, interact: discord.Interaction, button: discord.ui.Button
+            ):
+                if interact.user.id != self.original_interact.user.id:
+                    return
+
+                inventory = get_inventory(str(interact.user.id))
+                healed = False
+                msg = ""
+
+                # Buscamos algo para curarnos rápidamente sin salir del combate
+                for i in inventory:
+                    if i["item"] in ["Venda", "Botiquín", "Comida enlatada"]:
+                        exito, _ = use_item(str(interact.user.id), i["item"])
+                        if exito:
+                            healed = True
+                            msg = f"🩹 Usaste tu {i['item']} rápidamente en medio de la pelea.\n"
+                            break
+
+                if not healed:
+                    msg = "❌ No tienes objetos curativos rápidos (Venda, Botiquín o Comida enlatada).\n"
+
+                # El enemigo aprovecha que nos curamos para pegarnos
+                enemy_d = random.randint(*self.e_data["daño"])
+                update_health(str(interact.user.id), -enemy_d)
+                msg += f"\n💥 Mientras estabas distraído, el enemigo te golpea y hace **{enemy_d}** de daño."
+
+                await self.update_combat(interact, msg)
+
+            @discord.ui.button(
+                label="Huir", emoji="🏃", style=discord.ButtonStyle.secondary
+            )
+            async def btn_huir(
+                self, interact: discord.Interaction, button: discord.ui.Button
+            ):
+                if interact.user.id != self.original_interact.user.id:
+                    return
+
+                # 60% de probabilidad de escapar con éxito
+                if random.random() > 0.4:
+                    self.e_hp = 0
+                    for btn in self.children:
+                        btn.disabled = True
+                    embed = discord.Embed(
+                        title="🏃 Escapatoria exitosa",
+                        description="Corriste tan rápido como pudiste y lograste huir del combate con vida.",
+                        color=discord.Color.light_grey(),
+                    )
+                    await interact.response.edit_message(embed=embed, view=self)
+                else:
+                    enemy_d = random.randint(*self.e_data["daño"])
+                    update_health(str(interact.user.id), -enemy_d)
+                    msg = f"❌ Tropezaste al intentar huir. El enemigo te alcanza y te hace **{enemy_d}** de daño."
+                    await self.update_combat(interact, msg)
+
+        # Enviamos el mensaje inicial del combate
+        view = CombatView(interaction, enemigo_nombre, enemigo_data)
+
+        embed_inicio = discord.Embed(
+            title="⚔️ ¡Peligro Inminente!",
+            description=f"Te has adentrado en una zona peligrosa y te topaste con un **{enemigo_nombre}**.\n¿Qué vas a hacer?",
+            color=enemigo_data["color"],
+        )
+        embed_inicio.add_field(
+            name="Tu Vida", value=f"❤️ {survivor['health']}/100", inline=True
+        )
+        embed_inicio.add_field(
+            name="Vida Enemigo",
+            value=f"🩸 {enemigo_data['hp']}/{enemigo_data['hp']}",
+            inline=True,
+        )
+
+        await interaction.response.send_message(embed=embed_inicio, view=view)
+
+    # ==========================================
+    # SISTEMA DE MISIONES (FASE 9)
+    # ==========================================
+    @discord.app_commands.command(
+        name="misiones",
+        description="Revisa el tablón de anuncios y gestiona tu misión actual.",
+    )
+    async def misiones(self, interaction: discord.Interaction):
+        if not has_survivor(str(interaction.user.id)):
+            return await interaction.response.send_message(
+                "❌ Primero debes crear tu perfil con **/perfil**."
+            )
+
+        quest = get_active_quest(str(interaction.user.id))
+        embed = discord.Embed(title="📜 Tablón de Misiones", color=discord.Color.gold())
+
+        class MisionView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=120)
+
+            @discord.ui.button(
+                label="Aceptar Nueva",
+                style=discord.ButtonStyle.primary,
+                emoji="📌",
+                disabled=bool(quest),
+            )
+            async def btn_aceptar(
+                self, btn_interact: discord.Interaction, button: discord.ui.Button
+            ):
+                if btn_interact.user.id != interaction.user.id:
+                    return
+                exito, _ = assign_random_quest(str(btn_interact.user.id))
+                if exito:
+                    await btn_interact.response.send_message(
+                        "✅ Has aceptado una misión. Usa `/misiones` de nuevo para verla.",
+                        ephemeral=True,
+                    )
+                else:
+                    await btn_interact.response.send_message(
+                        "❌ Ya tienes una misión.", ephemeral=True
+                    )
+
+            @discord.ui.button(
+                label="Reclamar Recompensa",
+                style=discord.ButtonStyle.success,
+                emoji="🎁",
+                disabled=not bool(quest),
+            )
+            async def btn_reclamar(
+                self, btn_interact: discord.Interaction, button: discord.ui.Button
+            ):
+                if btn_interact.user.id != interaction.user.id:
+                    return
+                exito, msg = claim_quest_reward(str(btn_interact.user.id))
+                await btn_interact.response.send_message(msg, ephemeral=not exito)
+
+            @discord.ui.button(
+                label="Abandonar",
+                style=discord.ButtonStyle.danger,
+                emoji="🗑️",
+                disabled=not bool(quest),
+            )
+            async def btn_abandonar(
+                self, btn_interact: discord.Interaction, button: discord.ui.Button
+            ):
+                if btn_interact.user.id != interaction.user.id:
+                    return
+                abandon_quest(str(btn_interact.user.id))
+                await btn_interact.response.send_message(
+                    "🗑️ Misión abandonada.", ephemeral=True
+                )
+
+        if quest:
+            q_data = QUESTS[quest["quest_id"]]
+            embed.description = (
+                f"**{q_data['emoji']} {q_data['titulo']}**\n{q_data['descripcion']}"
+            )
+
+            if q_data["tipo"] == "recoleccion":
+                inv = get_inventory(str(interaction.user.id))
+                cant = sum(i["quantity"] for i in inv if i["item"] == q_data["target"])
+                embed.add_field(
+                    name="En inventario",
+                    value=f"{cant}/{q_data['required']} {q_data['target']}",
+                )
+            else:
+                embed.add_field(
+                    name="Progreso",
+                    value=f"{quest['progress']}/{quest['required']} {q_data['target']}",
+                )
+
+            embed.add_field(
+                name="Recompensa",
+                value=f"🦴 {q_data['recompensa_overos']}\n📦 {q_data.get('recompensa_item', 'Nada')}",
+            )
+        else:
+            embed.description = "No tienes ninguna misión activa en este momento. ¡Busca trabajo en el tablón!"
+
+        await interaction.response.send_message(embed=embed, view=MisionView())
+
+    @discord.app_commands.command(
+        name="reset", description="Reinicia tu superviviente (solo desarrollo)."
+    )
+    async def reset(self, interaction: discord.Interaction):
+        if interaction.user.id != 1414035229286596719:
             return
         reset_survivor(str(interaction.user.id))
         await interaction.response.send_message("✅ Superviviente reiniciado.")

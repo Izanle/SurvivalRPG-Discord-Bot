@@ -1,3 +1,6 @@
+import random
+import hashlib
+from config.quests import QUESTS
 from data.database import get_connection
 from datetime import datetime, timedelta
 from config.effects import SURVIVOR_EFFECTS
@@ -1345,3 +1348,178 @@ def rest_in_shelter(discord_id):
         True,
         f"💤 Descansaste en tu refugio y recuperaste **{cura} puntos de vida**.",
     )
+
+
+# ==========================================
+# SISTEMA DE MISIONES (FASE 9)
+# ==========================================
+
+
+def get_active_quest(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+    if not survivor:
+        return None
+
+    cursor.execute(
+        "SELECT * FROM quests WHERE survivor_id = ? AND status = 'activa'",
+        (survivor["id"],),
+    )
+    quest = cursor.fetchone()
+    connection.close()
+    return quest
+
+
+def assign_random_quest(discord_id):
+    if get_active_quest(discord_id):
+        return False, "Ya tienes una misión activa."
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+
+    quest_id = random.choice(list(QUESTS.keys()))
+    quest_data = QUESTS[quest_id]
+
+    cursor.execute(
+        """
+        INSERT INTO quests (survivor_id, quest_id, target, progress, required)
+        VALUES (?, ?, ?, 0, ?)
+    """,
+        (survivor["id"], quest_id, quest_data["target"], quest_data["required"]),
+    )
+    connection.commit()
+    connection.close()
+    return True, quest_id
+
+
+def update_quest_progress(discord_id, quest_type, target, amount=1):
+    quest = get_active_quest(discord_id)
+    if not quest:
+        return
+
+    quest_data = QUESTS.get(quest["quest_id"])
+    if not quest_data:
+        return
+
+    # Comparamos ignorando mayúsculas y espacios por si acaso
+    tipo_mision = quest_data["tipo"].strip().lower()
+    tipo_accion = quest_type.strip().lower()
+    objetivo_mision = quest_data["target"].strip().lower()
+    objetivo_accion = target.strip().lower()
+
+    if tipo_mision == tipo_accion and objetivo_mision == objetivo_accion:
+        connection = get_connection()
+        cursor = connection.cursor()
+        nuevo_progreso = min(quest["progress"] + amount, quest["required"])
+
+        cursor.execute(
+            """
+            UPDATE quests 
+            SET progress = ?
+            WHERE id = ?
+        """,
+            (nuevo_progreso, quest["id"]),
+        )
+        connection.commit()
+        connection.close()
+
+        print(f"✅ Progreso de misión guardado: {nuevo_progreso}/{quest['required']}")
+    else:
+        # Esto aparecerá en tu consola si el jugador hace algo que no es su misión
+        print(
+            f"Info: Acción ({tipo_accion} - {objetivo_accion}) no coincide con misión ({tipo_mision} - {objetivo_mision})."
+        )
+
+
+def abandon_quest(discord_id):
+    quest = get_active_quest(discord_id)
+    if not quest:
+        return False
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM quests WHERE id = ?", (quest["id"],))
+    connection.commit()
+    connection.close()
+    return True
+
+
+def claim_quest_reward(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+
+    cursor.execute(
+        "SELECT * FROM quests WHERE survivor_id = ? AND status = 'activa'",
+        (survivor["id"],),
+    )
+    quest = cursor.fetchone()
+
+    if not quest:
+        connection.close()
+        return False, "No tienes misiones activas para reclamar."
+
+    quest_data = QUESTS[quest["quest_id"]]
+
+    # Comprobación según el tipo de misión
+    if quest_data["tipo"] == "recoleccion":
+        inventario = get_inventory(discord_id)
+        cantidad_tiene = sum(
+            i["quantity"] for i in inventario if i["item"] == quest_data["target"]
+        )
+        if cantidad_tiene < quest_data["required"]:
+            connection.close()
+            return (
+                False,
+                f"❌ No tienes suficientes {quest_data['target']} ({cantidad_tiene}/{quest_data['required']}).",
+            )
+        remove_item(discord_id, quest_data["target"], quest_data["required"])
+    else:
+        if quest["progress"] < quest["required"]:
+            connection.close()
+            return (
+                False,
+                f"❌ Aún no terminas la misión. Progreso: {quest['progress']}/{quest['required']}.",
+            )
+
+    # Si cumplió, damos recompensas y borramos la misión
+    add_overos(discord_id, quest_data["recompensa_overos"])
+    if quest_data["recompensa_item"]:
+        add_item(discord_id, quest_data["recompensa_item"], 1)
+
+    cursor.execute("DELETE FROM quests WHERE id = ?", (quest["id"],))
+    connection.commit()
+    connection.close()
+
+    msg = f"✅ ¡Misión completada! Has ganado **{quest_data['recompensa_overos']} Overos**"
+    if quest_data["recompensa_item"]:
+        msg += f" y **{quest_data['recompensa_item']}**."
+    return True, msg
+
+
+# ==========================================
+# SISTEMA DE MUNDO DINÁMICO (FASE 10)
+# ==========================================
+
+
+def get_current_weather():
+    from config.world import WEATHER_TYPES
+
+    # Usamos la fecha y la hora actual para crear un clima que cambie cada hora
+    # pero que sea exactamente el mismo para todos los jugadores a la vez.
+    seed = datetime.now().strftime("%Y-%m-%d-%H")
+    hash_val = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+
+    weathers = list(WEATHER_TYPES.keys())
+    clima_actual = weathers[hash_val % len(weathers)]
+
+    # Determinamos si es de día o de noche según la hora del servidor
+    hora = datetime.now().hour
+    es_dia = 6 <= hora < 19  # De 6 AM a 6:59 PM es de día
+
+    return clima_actual, WEATHER_TYPES[clima_actual], es_dia

@@ -14,11 +14,9 @@ def init_database():
     if not os.path.exists("data"):
         os.makedirs("data")
 
-    # 1. PRIMERO abrimos la conexión y creamos el cursor
     connection = get_connection()
     cursor = connection.cursor()
 
-    # 2. LUEGO creamos la tabla principal (survivors)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS survivors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +31,6 @@ def init_database():
         )
     """)
 
-    # 3. Y ahora sí, creamos las tablas que dependen de survivors
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS survivor_effects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +72,6 @@ def init_database():
         )
     """)
 
-    # NUEVA TABLA (FASE 6): Almacena los datos del refugio de cada jugador.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS shelters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,6 +85,23 @@ def init_database():
         )
     """)
 
-    # 4. Guardamos los cambios y cerramos
+    # NUEVA TABLA (FASE 9): Sistema de Misiones
+    # UNIQUE(survivor_id) para que solo tengan 1 misión activa a la vez.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS quests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            survivor_id INTEGER UNIQUE NOT NULL,
+            quest_id TEXT NOT NULL,
+            target TEXT NOT NULL,
+            progress INTEGER DEFAULT 0,
+            required INTEGER NOT NULL,
+            status TEXT DEFAULT 'activa',
+
+            FOREIGN KEY (survivor_id)
+            REFERENCES survivors(id)
+            ON DELETE CASCADE
+        )
+    """)
+
     connection.commit()
     connection.close()

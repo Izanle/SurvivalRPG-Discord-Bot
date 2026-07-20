@@ -28,4 +28,6 @@ RUMORES = [
     "Combinar una botella de agua y alcohol medicinal crea algo explosivo... ten cuidado.",
     "Si te muerde algo en el Bosque, búscate un antídoto rápido o la infección te consumirá.",
     "El Mercader siempre tiene algo especial, pero cobra caro.",
+    "Top Text, Bottom Text",
+    "Du bis gut genuug",
 ]
