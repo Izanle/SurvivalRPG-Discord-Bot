@@ -32,6 +32,13 @@ EQUIPMENT = {
         "emoji": "🧨",
         "descripcion": "Explosivo casero para arrasar con los enemigos.",
     },
+    # La pistola del abismo es un arma especial que puede tener efectos negativos al usarla, pero su daño es muy alto
+    "Pistola del Abismo": {
+        "tipo": "arma",
+        "bonus_dano": 50,
+        "emoji": "🔫",
+        "descripcion": "Esta arma no deberia existir",
+    },
     # Armaduras / Protección (Reducen el daño recibido)
     "Traje de jean": {
         "tipo": "armadura",
@@ -50,6 +57,12 @@ EQUIPMENT = {
         "reduccion_dano": 25,  # Reduce un 25% el daño recibido
         "emoji": "🦺",
         "descripcion": "Protección militar pesada. Absorbe impactos balísticos y golpes fuertes.",
+    },
+    "Camisa de fuerza maldita": {
+        "tipo": "armadura",
+        "reduccion_dano": 40,  # Reduce un 40% el daño recibido
+        "emoji": "🧥",
+        "descripcion": "Una camisa de fuerza, pero se siente demasiado extraña.",
     },
 }
 

@@ -1161,9 +1161,29 @@ class Survivors(commands.Cog):
                     loot_o = random.randint(*self.e_data["loot_overos"])
                     add_overos(str(interact.user.id), loot_o)
                     msg += f"\n🦴 Obtuviste **{loot_o} Overos**."
-                    if self.e_data["loot_item"] and random.random() > 0.5:
+                    # Compatibilidad con el botín antiguo
+                    if self.e_data.get("loot_item") and random.random() > 0.5:
                         add_item(str(interact.user.id), self.e_data["loot_item"], 1)
-                        msg += f"\n📦 Dejó caer: **{self.e_data['loot_item']}**."
+                        msg += f"\n📦 Dejó caer: **{self.e_data['loot_item']} (x1)**."
+
+                    # NUEVO: Botín múltiple
+                    items_dropeados = []
+                    if "items" in self.e_data:
+                        for loot in self.e_data["items"]:
+                            if random.random() <= (loot["chance"] / 100.0):
+                                cantidad = random.randint(
+                                    loot["cantidad"][0], loot["cantidad"][1]
+                                )
+                                if cantidad > 0:
+                                    add_item(
+                                        str(interact.user.id), loot["item"], cantidad
+                                    )
+                                    items_dropeados.append(
+                                        f"**{loot['item']} (x{cantidad})**"
+                                    )
+
+                    if items_dropeados:
+                        msg += f"\n📦 Dejó caer: {', '.join(items_dropeados)}."
 
                     update_quest_progress(str(interact.user.id), "caceria", self.e_name)
 
@@ -1406,7 +1426,29 @@ class Survivors(commands.Cog):
             ):
                 if btn_interact.user.id != interaction.user.id:
                     return
+
+                # Guardamos la ID de la misión antes de que claim_quest_reward la elimine de la DB
+                current_quest_id = quest["quest_id"] if quest else None
+
                 exito, msg = claim_quest_reward(str(btn_interact.user.id))
+
+                # Si la misión se completó con éxito, entregamos las recompensas múltiples
+                if exito and current_quest_id:
+                    q_data = QUESTS.get(current_quest_id)
+                    if q_data and "recompensa_items" in q_data:
+                        recompensas_extras = []
+                        for reward in q_data["recompensa_items"]:
+                            add_item(
+                                str(btn_interact.user.id),
+                                reward["item"],
+                                reward["cantidad"],
+                            )
+                            recompensas_extras.append(
+                                f"**{reward['item']} (x{reward['cantidad']})**"
+                            )
+                        if recompensas_extras:
+                            msg += f"\n🎁 ¡También has recibido: {', '.join(recompensas_extras)}!"
+
                 await btn_interact.response.send_message(msg, ephemeral=not exito)
 
             @discord.ui.button(
@@ -1444,9 +1486,19 @@ class Survivors(commands.Cog):
                     value=f"{quest['progress']}/{quest['required']} {q_data['target']}",
                 )
 
+            # Construimos el texto de las recompensas dinámicamente
+            txt_recompensa = f"🦴 {q_data['recompensa_overos']} Overos"
+            if "recompensa_items" in q_data:
+                for reward in q_data["recompensa_items"]:
+                    txt_recompensa += f"\n📦 {reward['item']} x{reward['cantidad']}"
+            elif q_data.get("recompensa_item"):
+                txt_recompensa += f"\n📦 {q_data['recompensa_item']} x1"
+            else:
+                txt_recompensa += "\n📦 Ninguno"
+
             embed.add_field(
                 name="Recompensa",
-                value=f"🦴 {q_data['recompensa_overos']}\n📦 {q_data.get('recompensa_item', 'Nada')}",
+                value=txt_recompensa,
             )
         else:
             embed.description = "No tienes ninguna misión activa en este momento. ¡Busca trabajo en el tablón!"

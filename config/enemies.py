@@ -1,32 +1,56 @@
-# Configuración de Enemigos (Fase 8)
-
-ENEMIES = {
-    "Rata Mutante": {
-        "emoji": "🐀",
-        "hp": 30,
-        "daño": (3, 8),  # Daño aleatorio entre 3 y 8
-        "loot_overos": (1, 6),  # Cuántos Overos deja al morir
-        "loot_item": None,
-        "efecto_probabilidad": 0,
-        "color": 0x8B4513,  # Marrón
+ENEMIES = (
+    {
+        "Rata Mutante": {
+            "emoji": "🐀",
+            "hp": 30,
+            "daño": (3, 8),
+            "loot_overos": (1, 6),
+            "loot_item": None,
+            "items": [{"item": "Chatarra", "chance": 60, "cantidad": (1, 2)}],
+            "efecto_probabilidad": 0,
+            "color": 0x8B4513,
+        },
+        "Saqueador": {
+            "emoji": "🥷",
+            "hp": 65,
+            "daño": (8, 15),
+            "loot_overos": (20, 40),
+            "loot_item": None,
+            "items": [
+                {"item": "Venda", "chance": 50, "cantidad": (1, 2)},
+                {"item": "Alcohol medicinal", "chance": 30, "cantidad": (1, 1)},
+                {"item": "Comida enlatada", "chance": 40, "cantidad": (1, 1)},
+            ],
+            "efecto_probabilidad": 0,
+            "color": 0xFF0000,
+        },
+        "Infectado": {
+            "emoji": "🧟",
+            "hp": 150,
+            "daño": (9, 10),
+            "loot_overos": (35, 50),
+            "loot_item": None,
+            "items": [
+                {"item": "Chatarra", "chance": 80, "cantidad": (2, 4)},
+                {"item": "Llave oxidada", "chance": 15, "cantidad": (1, 1)},
+            ],
+            "efecto_probabilidad": 0.3,
+            "efecto": "Infectado",
+            "color": 0x2F4F4F,
+        },
+        "Horror": {
+            "emoji": "👁️",
+            "hp": 300,
+            "daño": (20, 25),
+            "loot_overos": (300, 500),
+            "loot_item": None,
+            "items": [
+                {"item": "Pistola del Abismo", "chance": 50, "cantidad": (2, 4)},
+                {"item": "Llave oxidada", "chance": 15, "cantidad": (1, 1)},
+            ],
+            "efecto_probabilidad": 0.3,
+            "efecto": "Infectado",
+            "color": 0x2F4F4F,
+        },
     },
-    "Saqueador": {
-        "emoji": "🥷",
-        "hp": 65,
-        "daño": (8, 15),
-        "loot_overos": (10, 25),
-        "loot_item": "Venda",  # Objeto que puede dejar caer
-        "efecto_probabilidad": 0,
-        "color": 0xFF0000,  # Rojo
-    },
-    "Infectado": {
-        "emoji": "🧟",
-        "hp": 100,
-        "daño": (12, 22),
-        "loot_overos": (5, 15),
-        "loot_item": None,
-        "efecto_probabilidad": 0.3,  # 30% de probabilidad de infectarte
-        "efecto": "Infectado",
-        "color": 0x2F4F4F,  # Gris oscuro verdoso
-    },
-}
+)

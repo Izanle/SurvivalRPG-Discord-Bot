@@ -317,6 +317,19 @@ EVENTS = [
         "damage": 0,
         "lugares": ["Comisaría"],
     },
+    {
+        "mensaje": "🚓👖 Exploraste entre los casilleros de los oficiales, y encontraste un traje hecho en jean.",
+        "overos": (20, 40),
+        "item": None,
+        "items": [
+            {"item": "Traje de jean", "chance": 60, "cantidad": (1, 1)},
+            {"item": "Chatarra", "chance": 25, "cantidad": (1, 1)},
+        ],
+        "effect": None,
+        "chance": 40,
+        "damage": 0,
+        "lugares": ["Comisaría"],
+    },
     # ==========================================
     # 🚇 METRO
     # ==========================================
