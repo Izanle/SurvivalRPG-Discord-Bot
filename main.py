@@ -15,10 +15,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 OWNER_ID = 1414035229286596719
 
 
-COGS = [
-    "cogs.general",
-    "cogs.survivors",
-]
+COGS = ["cogs.general", "cogs.survivors", "cogs.cntrl", "cogs.admin"]
 
 
 MODULES = [
@@ -31,6 +28,7 @@ MODULES = [
     "config.shop",
     "config.shelter",
     "config.locations",
+    "config.incursions",
     "utils.users",
     "data.database",
 ]

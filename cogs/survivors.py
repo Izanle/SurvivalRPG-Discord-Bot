@@ -7,12 +7,11 @@ import random
 
 import discord
 from discord.ext import commands
-
 from config.quests import QUESTS
 from config.items import ITEMS
-from config.effects import SURVIVOR_EFFECTS
 from config.recipes import RECIPES
 from config.shop import SHOP_ITEMS
+from config.enemies import ENEMIES
 from utils.users import (
     get_or_create_survivor,
     add_overos,
@@ -24,13 +23,11 @@ from utils.users import (
     increase_effect_progress,
     update_effects,
     update_health,
-    reset_survivor,
     get_inventory,
     add_item,
     use_item,
     has_survivor,
     apply_effect_damage,
-    clear_inventory,
     reduce_active_effects,
     get_active_effects,
     has_active_effect,
@@ -57,28 +54,188 @@ from utils.users import (
 )
 
 
-class CantidadModal(discord.ui.Modal):
-    def __init__(self, objeto):
-        super().__init__(title="Cantidad de objeto")
-        self.objeto = objeto
-        self.cantidad = discord.ui.TextInput(
-            label="Cantidad", placeholder="Ejemplo: 5", required=True
-        )
-        self.add_item(self.cantidad)
+class IncursionView(discord.ui.View):
+    def __init__(self, user_id: str, lugar: str):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.lugar = lugar
+        self.nodo_actual = "inicio"
+        self.opciones_usadas = set()  # ¡MECÁNICA 2! Guarda las opciones de 1 solo uso
+        self.actualizar_botones()
 
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            cantidad = int(self.cantidad.value)
-        except ValueError:
-            await interaction.response.send_message(
-                "❌ La cantidad debe ser un número.", ephemeral=True
-            )
+    def actualizar_botones(self):
+        self.clear_items()
+        from config.incursions import INCURSIONS
+
+        data_zona = INCURSIONS.get(self.lugar)
+        if not data_zona:
+            return
+        nodo_data = data_zona["nodos"].get(self.nodo_actual)
+        if not nodo_data or nodo_data.get("tipo") == "fin":
             return
 
-        add_item(str(interaction.user.id), self.objeto, cantidad)
+        if nodo_data.get("tipo") == "combate":
+            btn_atacar = discord.ui.Button(
+                label="Atacar", style=discord.ButtonStyle.danger, emoji="⚔️"
+            )
+            btn_atacar.callback = self.callback_combat_atacar
+            self.add_item(btn_atacar)
+
+            btn_huir = discord.ui.Button(
+                label="Huir", style=discord.ButtonStyle.secondary, emoji="🏃"
+            )
+            btn_huir.callback = self.callback_combat_huir
+            self.add_item(btn_huir)
+            return
+
+        # Obtenemos el inventario del jugador para las puertas bloqueadas
+        survivor = get_or_create_survivor(self.user_id, "Jugador")
+        inventario = survivor.get("inventory", {})
+
+        for i, opcion in enumerate(nodo_data.get("opciones", [])):
+            uid_opcion = (
+                f"{self.nodo_actual}_{i}"  # ID único para este botón en esta habitación
+            )
+
+            # ¡MECÁNICA 2 (Un solo uso)! Si ya la usamos, saltamos este botón y no lo dibujamos
+            if opcion.get("un_solo_uso") and uid_opcion in self.opciones_usadas:
+                continue
+
+            btn = discord.ui.Button(
+                label=opcion["label"],
+                style=discord.ButtonStyle.primary,
+                emoji=opcion.get("emoji", "➡️"),
+            )
+
+            # ¡MECÁNICA 1 (Requisitos)! Verificamos si necesita un ítem
+            req_item = opcion.get("requiere_item")
+            if req_item:
+                tiene_item = False
+                # Revisa si el jugador tiene el ítem en la cantidad necesaria (al menos 1)
+                for item_db in inventario:
+                    if item_db["item"] == req_item and item_db["cantidad"] > 0:
+                        tiene_item = True
+                        break
+
+                if not tiene_item:
+                    btn.style = discord.ButtonStyle.secondary
+                    btn.disabled = True
+                    btn.label = f"{opcion['label']} (Requiere: {req_item})"
+
+            btn.callback = self.crear_callback_opcion(opcion, uid_opcion)
+            self.add_item(btn)
+
+    def crear_callback_opcion(self, opcion: dict, uid_opcion: str):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != int(self.user_id):
+                return await interaction.response.send_message(
+                    "❌ Esta no es tu incursión.", ephemeral=True
+                )
+
+            # Si era de un solo uso, lo registramos para que desaparezca al actualizar
+            if opcion.get("un_solo_uso"):
+                self.opciones_usadas.add(uid_opcion)
+
+            # ¡MECÁNICA 3 (Azar)! Determinamos a qué nodo va
+            siguiente = opcion.get("siguiente")
+            if not siguiente and "siguiente_azar" in opcion:
+                caminos = opcion["siguiente_azar"]
+                nodos = [c["nodo"] for c in caminos]
+                pesos = [c["probabilidad"] for c in caminos]
+                siguiente = random.choices(nodos, weights=pesos, k=1)[0]
+
+            self.nodo_actual = siguiente
+            from config.incursions import INCURSIONS
+
+            data_zona = INCURSIONS.get(self.lugar)
+            nodo_data = data_zona["nodos"].get(self.nodo_actual)
+
+            embed = discord.Embed(
+                title=data_zona["titulo"],
+                description=nodo_data["descripcion"],
+                color=data_zona["color"],
+            )
+
+            msg_extra = ""
+            if "loot" in nodo_data:
+                item_info = nodo_data["loot"]
+                add_item(self.user_id, item_info["item"], item_info["cantidad"])
+                msg_extra += f"\n📦 Encontraste: **{item_info['item']} (x{item_info['cantidad']})**"
+
+            if "overos" in nodo_data and nodo_data["overos"][1] > 0:
+                min_o, max_o = nodo_data["overos"]
+                cant_o = random.randint(min_o, max_o)
+                if cant_o > 0:
+                    add_overos(self.user_id, cant_o)
+                    msg_extra += f"\n🦴 Encontraste: **{cant_o} Overos**"
+
+            if "damage" in nodo_data:
+                msg_extra += (
+                    f"\n⚠️ Recibiste **{nodo_data['damage']} de daño** por el entorno."
+                )
+                # Aquí podrías llamar a tu función real de daño a futuro
+
+            if msg_extra:
+                embed.add_field(name="Resultados", value=msg_extra, inline=False)
+
+            if nodo_data.get("tipo") == "fin":
+                self.clear_items()
+                embed.add_field(
+                    name="Fin de la Incursión",
+                    value="Has salido de la zona de forma segura.",
+                    inline=False,
+                )
+                await interaction.response.edit_message(embed=embed, view=self)
+                return
+
+            self.actualizar_botones()
+            await interaction.response.edit_message(embed=embed, view=self)
+
+        return callback
+
+    async def callback_combat_atacar(self, interaction: discord.Interaction):
         await interaction.response.send_message(
-            f"✅ Agregado: {self.objeto} x{cantidad}", ephemeral=True
+            "⚔️ ¡Derrotaste al enemigo de la zona!", ephemeral=True
         )
+        self.nodo_actual = "inicio"
+        self.actualizar_botones()
+
+        # Volvemos a generar el embed del inicio para que el mensaje no se quede vacío
+        from config.incursions import INCURSIONS
+
+        data_zona = INCURSIONS.get(self.lugar)
+        nodo_inicio = data_zona["nodos"]["inicio"]
+        embed = discord.Embed(
+            title=data_zona["titulo"],
+            description=nodo_inicio["descripcion"],
+            color=data_zona["color"],
+        )
+        embed.add_field(
+            name="Combate superado",
+            value="Lograste abrirte paso y vuelves a una zona segura.",
+        )
+        await interaction.message.edit(embed=embed, view=self)
+
+    async def callback_combat_huir(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            "🏃 Lograste huir despavorido de regreso al inicio.", ephemeral=True
+        )
+        self.nodo_actual = "inicio"
+        self.actualizar_botones()
+
+        from config.incursions import INCURSIONS
+
+        data_zona = INCURSIONS.get(self.lugar)
+        nodo_inicio = data_zona["nodos"]["inicio"]
+        embed = discord.Embed(
+            title=data_zona["titulo"],
+            description=nodo_inicio["descripcion"],
+            color=data_zona["color"],
+        )
+        embed.add_field(
+            name="Huida táctica", value="Escapaste por poco. Al menos sigues con vida."
+        )
+        await interaction.message.edit(embed=embed, view=self)
 
 
 class TransaccionModal(discord.ui.Modal):
@@ -112,21 +269,6 @@ class TransaccionModal(discord.ui.Modal):
 class Survivors(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    # Comando administrativo para agregar efectos
-    @discord.app_commands.command(
-        name="efecto", description="Añade un efecto (solo para pruebas)."
-    )
-    @discord.app_commands.describe(efecto="Nombre del efecto.")
-    async def efecto(self, interaction: discord.Interaction, efecto: str):
-        if interaction.user.id != 1414035229286596719:
-            await interaction.response.send_message(
-                "❌ No tienes permiso para usar este comando.", ephemeral=True
-            )
-            return
-
-        add_effect(str(interaction.user.id), efecto)
-        await interaction.response.send_message(f"🧪 Efecto agregado: **{efecto}**")
 
     # Comando perfil
     @discord.app_commands.command(
@@ -333,61 +475,6 @@ class Survivors(commands.Cog):
             color=discord.Color.blue(),
         )
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    # Comando administrativo para agregar objetos
-    @discord.app_commands.command(
-        name="objeto", description="Agrega objetos al inventario (admin)."
-    )
-    async def objeto(self, interaction: discord.Interaction):
-        OWNER_ID = "1414035229286596719"
-        if str(interaction.user.id) != OWNER_ID:
-            await interaction.response.send_message(
-                "❌ No tienes permiso para usar este comando."
-            )
-            return
-
-        opciones = []
-        for item, data in ITEMS.items():
-            opciones.append(
-                discord.SelectOption(
-                    label=item,
-                    description=data["descripcion"][:100],
-                    emoji=data.get("emoji") if data.get("emoji") else "📦",
-                    value=item,
-                )
-            )
-
-        select = discord.ui.Select(
-            placeholder="Selecciona un objeto...", options=opciones
-        )
-
-        async def callback(interaction_select: discord.Interaction):
-            objeto_seleccionado = select.values[0]
-            await interaction_select.response.send_modal(
-                CantidadModal(objeto_seleccionado)
-            )
-
-        select.callback = callback
-        view = discord.ui.View()
-        view.add_item(select)
-        await interaction.response.send_message(
-            "📦 Selecciona el objeto que quieres agregar:", view=view
-        )
-
-    # Comando administrativo para limpiar el inventario
-    @discord.app_commands.command(
-        name="limpiar_inventario", description="Limpia todo el inventario del jugador."
-    )
-    async def limpiar_inventario(self, interaction: discord.Interaction):
-        OWNER_ID = "1414035229286596719"
-        if str(interaction.user.id) != OWNER_ID:
-            await interaction.response.send_message(
-                "❌ No tienes permiso para usar este comando."
-            )
-            return
-
-        clear_inventory(str(interaction.user.id))
-        await interaction.response.send_message("🧹 Inventario limpiado correctamente.")
 
     # Comando usar
     @discord.app_commands.command(
@@ -799,6 +886,49 @@ class Survivors(commands.Cog):
         add_xp(str(interaction.user.id), 25)
         await interaction.response.send_message(mensaje)
 
+    # Comando incursionar
+    @discord.app_commands.command(
+        name="incursionar",
+        description="Inicia una exploración profunda y narrativa por habitaciones en una zona.",
+    )
+    @discord.app_commands.describe(lugar="Zona que deseas incursionar a fondo.")
+    @discord.app_commands.choices(
+        lugar=[
+            discord.app_commands.Choice(name=f"{d['emoji']} {n}", value=n)
+            for n, d in LOCATIONS.items()
+        ]
+    )
+    async def incursionar(
+        self, interaction: discord.Interaction, lugar: discord.app_commands.Choice[str]
+    ):
+        if not has_survivor(str(interaction.user.id)):
+            return await interaction.response.send_message(
+                "❌ Primero debes crear tu perfil con **/perfil**."
+            )
+
+        lugar_nombre = lugar.value if hasattr(lugar, "value") else str(lugar)
+
+        # Por ahora tenemos configurado el Hospital con nodos narrativos
+        from config.incursions import INCURSIONS
+
+        if lugar_nombre not in INCURSIONS:
+            return await interaction.response.send_message(
+                f"⚠️ La incursión profunda para **{lugar_nombre}** todavía está mapeándose. Prueba con el **Hospital**.",
+                ephemeral=True,
+            )
+
+        data_zona = INCURSIONS[lugar_nombre]
+        nodo_inicio = data_zona["nodos"]["inicio"]
+
+        embed = discord.Embed(
+            title=data_zona["titulo"],
+            description=nodo_inicio["descripcion"],
+            color=data_zona["color"],
+        )
+
+        view = IncursionView(str(interaction.user.id), lugar_nombre)
+        await interaction.response.send_message(embed=embed, view=view)
+
     # Comando de refugio
     @discord.app_commands.command(
         name="refugio", description="Gestiona tu refugio, descansa y mejóralo."
@@ -1058,18 +1188,6 @@ class Survivors(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @discord.app_commands.command(
-        name="reset", description="Reinicia tu superviviente (solo desarrollo)."
-    )
-    async def reset(self, interaction: discord.Interaction):
-        if interaction.user.id != 1414035229286596719:
-            await interaction.response.send_message(
-                "❌ No tienes permiso para usar este comando.", ephemeral=True
-            )
-            return
-        reset_survivor(str(interaction.user.id))
-        await interaction.response.send_message("✅ Superviviente reiniciado.")
-
     # ==========================================
     # SISTEMA DE COMBATE PVE (FASE 8 + 9 + 10 + EQUIPO)
     # ==========================================
@@ -1077,7 +1195,18 @@ class Survivors(commands.Cog):
         name="cazar",
         description="Adéntrate en una zona peligrosa para buscar enemigos.",
     )
-    async def cazar(self, interaction: discord.Interaction):
+    @discord.app_commands.describe(lugar="Zona en la que quieres cazar (opcional).")
+    @discord.app_commands.choices(
+        lugar=[
+            discord.app_commands.Choice(name=f"{datos['emoji']} {nombre}", value=nombre)
+            for nombre, datos in LOCATIONS.items()
+        ]
+    )
+    async def cazar(
+        self,
+        interaction: discord.Interaction,
+        lugar: discord.app_commands.Choice[str] | None = None,
+    ):
         if not has_survivor(str(interaction.user.id)):
             return await interaction.response.send_message(
                 "❌ Primero debes crear tu perfil con **/perfil**."
@@ -1091,9 +1220,40 @@ class Survivors(commands.Cog):
                 "💀 Estás muerto.", ephemeral=True
             )
 
-        from config.enemies import ENEMIES
+        # Obtener el nombre del lugar si se proporcionó
+        lugar_nombre = None
+        if lugar:
+            lugar_nombre = lugar.value if hasattr(lugar, "value") else str(lugar)
 
-        enemigo_nombre = random.choice(list(ENEMIES.keys()))
+        # Separar enemigos globales y específicos de la zona
+        enemigos_especificos = {
+            k: v
+            for k, v in ENEMIES.items()
+            if v.get("lugares") and lugar_nombre in v["lugares"]
+        }
+        enemigos_globales = {k: v for k, v in ENEMIES.items() if not v.get("lugares")}
+
+        # Lógica de probabilidad 75/25 igual que la exploración
+        pool_enemigos = {}
+        if lugar_nombre and enemigos_especificos:
+            if random.random() <= 0.75:
+                pool_enemigos = enemigos_especificos
+            else:
+                pool_enemigos = enemigos_globales
+        else:
+            # Si no hay lugar o el lugar no tiene enemigos, usar globales
+            pool_enemigos = enemigos_globales
+
+        # Si por alguna razón no hay enemigos globales (seguridad), tomar todos
+        if not pool_enemigos:
+            pool_enemigos = ENEMIES
+
+        # Extraer nombres y pesos del pool seleccionado
+        nombres = list(pool_enemigos.keys())
+        pesos = [pool_enemigos[n].get("peso", 50) for n in nombres]
+
+        # Elegir enemigo basado en su peso
+        enemigo_nombre = random.choices(nombres, weights=pesos, k=1)[0]
         enemigo_data = dict(ENEMIES[enemigo_nombre])
 
         class CombatView(discord.ui.View):
@@ -1504,16 +1664,6 @@ class Survivors(commands.Cog):
             embed.description = "No tienes ninguna misión activa en este momento. ¡Busca trabajo en el tablón!"
 
         await interaction.response.send_message(embed=embed, view=MisionView())
-
-    # Comando para reiniciar al usuario
-    @discord.app_commands.command(
-        name="reset", description="Reinicia tu superviviente (solo desarrollo)."
-    )
-    async def reset(self, interaction: discord.Interaction):  # noqa: F811
-        if interaction.user.id != 1414035229286596719:
-            return
-        reset_survivor(str(interaction.user.id))
-        await interaction.response.send_message("✅ Superviviente reiniciado.")
 
 
 async def setup(bot):
