@@ -117,6 +117,37 @@ class AdminCog(commands.Cog):
         add_effect(str(interaction.user.id), efecto)
         await interaction.response.send_message(f"🧪 Efecto agregado: **{efecto}**")
 
+    # Comando para revivir
+    @discord.app_commands.command(
+        name="revivir",
+        description="[ADMIN] Revive a un jugador muerto como por arte de magia.",
+    )
+    @discord.app_commands.describe(
+        usuario="El jugador al que quieres revivir (déjalo en blanco para revivirte a ti mismo)"
+    )
+    @discord.app_commands.checks.has_permissions(administrator=True)
+    async def revivir(
+        self, interaction: discord.Interaction, usuario: discord.Member = None
+    ):
+        # Si no seleccionas a nadie, te revives a ti mismo por defecto
+        target = usuario or interaction.user
+        discord_id = str(target.id)
+
+        from utils.users import has_survivor, update_status, update_health
+
+        if not has_survivor(discord_id):
+            return await interaction.response.send_message(
+                "❌ Ese usuario no tiene un perfil creado.", ephemeral=True
+            )
+
+        # Le cambiamos el estado a Sano y le curamos 100 puntos de vida de golpe
+        update_status(discord_id, "Vivo")
+        update_health(discord_id, 100)
+
+        await interaction.response.send_message(
+            f"👼 ¡Un milagro en el páramo! **{target.display_name}** ha resucitado con la salud al máximo."
+        )
+
 
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))

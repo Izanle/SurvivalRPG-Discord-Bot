@@ -1,7 +1,9 @@
 # Configuración de Armas y Armaduras (Sistema de Equipamiento)
 
 EQUIPMENT = {
-    # Armas (Aumentan el daño al atacar)
+    # ==========================================
+    # ARMAS / DAÑO
+    # ==========================================
     "Cuchillo de caza": {
         "tipo": "arma",
         "bonus_dano": 10,
@@ -39,7 +41,9 @@ EQUIPMENT = {
         "emoji": "🔫",
         "descripcion": "Esta arma no deberia existir",
     },
-    # Armaduras / Protección (Reducen el daño recibido)
+    # ==========================================
+    # ARMADURAS / PROTECCIÓN
+    # ==========================================
     "Traje de jean": {
         "tipo": "armadura",
         "reduccion_dano": 5,  # Reduce un 5% el daño recibido

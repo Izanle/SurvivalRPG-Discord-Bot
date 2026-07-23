@@ -3,6 +3,9 @@
 # para crear el objeto resultado.
 
 RECIPES = {
+    # ==========================================
+    # OBJETOS CONSUMBILES/DE EXPLORACIÓN
+    # ==========================================
     "Vendaje estéril": {
         "ingredientes": {
             "Venda": 2,
@@ -17,6 +20,9 @@ RECIPES = {
         },
         "mensaje": "🔦 Cargas la linterna con pilas nuevas. Ahora dura mucho más tiempo encendida.",
     },
+    # ==========================================
+    # OBJETOS DE COMBATE
+    # ==========================================
     "Cóctel molotov": {
         "ingredientes": {
             "Gasolina": 1,

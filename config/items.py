@@ -1,6 +1,9 @@
 # Todos los objetos disponibles en el juego.
 
 ITEMS = {
+    # ==========================================
+    # CONSUMIBLES E INGREDIENTES PARA OTROS OBJETOS
+    # =========================================
     "Venda": {
         "descripcion": "Detiene hemorragias y cura heridas leves.",
         "descripcion_larga": "Un vendaje sencillo pero útil para detener sangrados y tratar heridas menores.",
@@ -410,7 +413,7 @@ ITEMS = {
         "encontrable": True,
     },
     # ==========================================
-    # NUEVOS OBJETOS POR ZONA Y COMBATE
+    # ARMADURAS, ARMAS Y EQUIPAMIENTO
     # ==========================================
     "Pistola 9mm": {
         "descripcion": "Un arma de fuego estándar. Ideal para defenderse.",
