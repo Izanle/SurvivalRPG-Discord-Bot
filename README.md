@@ -1,3 +1,20 @@
+## Tecnologías
+
+- Python 3.12
+- discord.py
+- SQLite
+- python-dotenv
+
+## Arquitectura
+
+- Programación modular mediante Cogs.
+- Persistencia con SQLite.
+- Sistema de eventos.
+- Gestión de estados del jugador.
+- Sistema de cooldowns.
+- Motor de incursiones basado en nodos.
+
+
 # ☣️ SurvivalRPG Discord Bot
 
 Un bot de supervivencia RPG en texto para Discord desarrollado en **Python** utilizando **discord.py**. Sumérgete en un mundo postapocalíptico desolado, explora zonas peligrosas, gestiona recursos, enfrentate a enemigos y construye tu refugio para sobrevivir.
