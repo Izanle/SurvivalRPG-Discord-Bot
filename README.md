@@ -32,4 +32,48 @@ Un bot de supervivencia RPG en texto para Discord desarrollado en **Python** uti
 
 ### 🎒 4. Inventario, Crafteo y Economía
 * **Inventario Paginado:** Vista interactiva de inventario organizada por páginas con emojis.
-* **Sistema de Recetas y Crafteo:** Combina ingredientes del
+* **Sistema de Recetas y Crafteo:** Combina ingredientes del inventario para fabricar vendas, herramientas o equipo avanzado.
+* **Mercado y Tienda (Overos):** Sistema de compra y venta de recursos con porcentaje de reventa ajustado.
+
+### ⛺ 5. Refugios (Shelters)
+* **Construcción y Mejoras:** Sube de nivel tu refugio usando materiales e Overos.
+* **Descanso e Higiene:** Descansa en tu base para recuperar vida con tiempos de espera (cooldowns) basados en el nivel del refugio.
+
+### 📜 6. Misiones, Logros y Clima Dinámico
+* **Sistema de Misiones:** Misiones aleatorias de cacería, recolección o exploración con recompensas al completarlas.
+* **Logros Desbloqueables:** Sistema de estadísticas globales (enemigos derrotados, zonas exploradas, etc.) que otorgan recompensas únicas.
+* **Clima Dinámico:** Ciclo de día/noche y clima sincronizado globalmente que cambia cada hora.
+
+---
+
+## 🛠️ Arquitectura del Proyecto
+
+```text
+SurvivalRPG/
+├── cogs/                  # Módulos de comandos de Discord (Cogs)
+│   ├── admin.py           # Comandos de administración y eventos
+│   ├── cntrl.py           # Control e interacciones
+│   ├── general.py         # Comandos generales
+│   └── survivors.py       # Lógica principal del juego e incursiones
+├── config/                # Archivos de configuración y diccionarios de datos
+│   ├── achievements.py    # Definición de logros
+│   ├── effects.py         # Efectos y estados
+│   ├── enemies.py         # Enemigos y estadísticas
+│   ├── equipment.py       # Armas y armaduras
+│   ├── events.py          # Eventos de exploración
+│   ├── incursions.py       # Mapa de nodos para las 9 zonas de incursión
+│   ├── items.py           # Objetos e ítems
+│   ├── locations.py       # Definición de zonas
+│   ├── quests.py          # Sistema de misiones
+│   ├── recipes.py         # Recetas de crafteo
+│   ├── shelter.py         # Niveles de refugio
+│   ├── shop.py            # Artículos de la tienda
+│   └── world.py           # Clima y tiempo
+├── data/                  # Almacenamiento de base de datos
+│   ├── database.py        # Conexión e inicialización de SQLite
+│   └── bot.db             # Archivo local de base de datos
+├── utils/                 # Funciones auxiliares y consultas a la BD
+│   └── users.py           # Gestión de usuarios, inventario y estados
+├── .env                   # Variables de entorno (TOKEN de Discord)
+├── main.py                # Punto de entrada y carga del bot
+└── requirements.txt       # Dependencias de Python
