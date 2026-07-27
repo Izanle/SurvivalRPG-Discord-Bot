@@ -14,3 +14,6 @@ __pycache__/
 # Sistema
 .vscode/
 .idea/
+
+# Notas
+condicionales.txt
