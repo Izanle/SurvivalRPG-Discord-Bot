@@ -140,7 +140,10 @@ INCURSIONS = {
             },
             "celdas": {
                 "descripcion": "El hedor aquí abajo es insoportable. Las puertas de las celdas están abiertas, pero encuentras el alijo secreto de un prisionero.",
-                "items": [],
+                "items": [
+                    {"item": "Cuero crudo", "cantidad": 2},
+                    {"item": "Alcohol", "cantidad": 1},
+                ],
                 "opciones": [
                     {
                         "label": "Subir al vestíbulo",
@@ -152,7 +155,11 @@ INCURSIONS = {
             },
             "armeria": {
                 "descripcion": "¡La llave gira con un crujido! Entras a la armería. La mayoría de las armas se las llevaron, pero logras rescatar equipamiento de primera.",
-                "items": [],
+                "items": [
+                    {"item": "Pistola 9mm", "cantidad": 1},
+                    {"item": "Pólvora", "cantidad": 4},
+                    {"item": "Munición 9mm", "cantidad": 10},
+                ],
                 "overos": (50, 100),
                 "opciones": [
                     {
@@ -207,8 +214,12 @@ INCURSIONS = {
             },
             "campamento_loot": {
                 "descripcion": "Encuentras una mochila semienterrada bajo las hojas secas. ¡Alguien dejó provisiones antes de huir!",
-                "items": [],
-                "overos": (10, 20),
+                "items": [
+                    {"item": "Vendaje estéril", "cantidad": 2},
+                    {"item": "Linterna", "cantidad": 1},
+                    {"item": "Comida enlatada", "cantidad": 3},
+                ],
+                "overos": (15, 40),
                 "opciones": [
                     {"label": "Volver al claro", "siguiente": "inicio", "emoji": "🔙"}
                 ],
@@ -223,8 +234,16 @@ INCURSIONS = {
             },
             "cabana": {
                 "descripcion": "Fuerzas la cerradura oxidada y entras. Adentro hay polvo, huesos y... ¡un alijo médico de supervivencia intacto!",
-                "items": [],
-                "overos": (30, 60),
+                "items": [
+                    {"item": "Venda", "cantidad": 5},
+                    {"item": "Comida enlatada", "cantidad": 3},
+                    {"item": "Linterna", "cantidad": 1},
+                    {"item": "Pilas", "cantidad": 4},
+                    {"item": "Llave óxidada", "cantidad": 2},
+                    {"item": "Alcohol", "cantidad": 2},
+                    {"item": "Traje de jean", "cantidad": 1},
+                ],
+                "overos": (50, 60),
                 "opciones": [
                     {
                         "label": "Salir de la cabaña",
@@ -284,8 +303,14 @@ INCURSIONS = {
             },
             "estanterias_loot": {
                 "descripcion": "Rebuscas entre cajas vacías y basura. ¡Bingo! Encuentras provisiones que los primeros saqueadores pasaron por alto.",
-                "items": [],
-                "overos": (10, 20),
+                "items": [
+                    {"item": "Botella de agua", "cantidad": 4},
+                    {"item": "Comida enlatada", "cantidad": 4},
+                    {"item": "Chocolate", "cantidad": 2},
+                    {"item": "Café instantáneo", "cantidad": 1},
+                    {"item": "Barra energética", "cantidad": 2},
+                ],
+                "overos": (15, 25),
                 "opciones": [
                     {
                         "label": "Volver a los pasillos",
@@ -303,7 +328,11 @@ INCURSIONS = {
             },
             "almacen": {
                 "descripcion": "Fuerzas la cerradura y la puerta cede. Adentro está casi intacto. Tomas todo lo que puedes cargar antes de que el olor te maree.",
-                "items": [],
+                "items": [
+                    {"item": "Botella de agua", "cantidad": 4},
+                    {"item": "Comida enlatada", "cantidad": 3},
+                    {"item": "Barra energética", "cantidad": 4},
+                ],
                 "overos": (30, 80),
                 "opciones": [
                     {

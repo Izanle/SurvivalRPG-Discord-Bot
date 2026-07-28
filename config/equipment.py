@@ -10,35 +10,41 @@ EQUIPMENT = {
         "emoji": "🗡️",
         "descripcion": "Un cuchillo afilado y resistente. Letal a corta distancia.",
     },
+    "Navaja": {
+        "tipo": "arma",
+        "bonus_dano": 5,
+        "emoji": "🗡️",
+        "descripcion": "Una navaja pequeña, sirve para defenderse de algunas criaturas.",
+    },
     "Bate con clavos": {
         "tipo": "arma",
         "bonus_dano": 18,
-        "emoji": "🏏",
+        "emoji": "🗡️",
         "descripcion": "Improvisado pero devastador contra los infectados.",
     },
     "Bate de béisbol": {
         "tipo": "arma",
         "descripcion": "Un bate de aluminio ideal para defenderse a corta distancia sin gastar balas.",
-        "emoji": "🏏",
+        "emoji": "🗡️",
         "bonus_dano": 15,
     },
     "Pistola de 9mm": {
         "tipo": "arma",
         "bonus_dano": 30,
-        "emoji": "🔫",
+        "emoji": "🗡️",
         "descripcion": "Un arma de fuego fiable. Las balas valen oro.",
     },
     "Cóctel molotov": {
         "tipo": "arma",
         "bonus_dano": 25,
-        "emoji": "🧨",
+        "emoji": "🗡️",
         "descripcion": "Explosivo casero para arrasar con los enemigos.",
     },
     # La pistola del abismo es un arma especial que puede tener efectos negativos al usarla, pero su daño es muy alto
     "Pistola del Abismo": {
         "tipo": "arma",
         "bonus_dano": 50,
-        "emoji": "🔫",
+        "emoji": "🗡️",
         "descripcion": "Esta arma no deberia existir",
     },
     # ==========================================
@@ -47,7 +53,7 @@ EQUIPMENT = {
     "Traje de jean": {
         "tipo": "armadura",
         "reduccion_dano": 5,  # Reduce un 5% el daño recibido
-        "emoji": "👖",
+        "emoji": "🧥",
         "descripcion": "Ropa de mezclilla gruesa. Protege ligeramente de rasguños.",
     },
     "Armadura de cuero": {
@@ -59,7 +65,7 @@ EQUIPMENT = {
     "Chaleco antibalas": {
         "tipo": "armadura",
         "reduccion_dano": 25,  # Reduce un 25% el daño recibido
-        "emoji": "🦺",
+        "emoji": "🧥",
         "descripcion": "Protección militar pesada. Absorbe impactos balísticos y golpes fuertes.",
     },
     "Camisa de fuerza maldita": {

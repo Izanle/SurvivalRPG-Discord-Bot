@@ -1,8 +1,9 @@
 # Configuración de Enemigos
 
 ENEMIES = {
+    ###ENEMIGOS COMUNES
     "Rata Mutante": {
-        "emoji": "🐀",
+        "emoji": "⚠️",
         "hp": 30,
         "daño": (3, 8),
         "peso": 60,
@@ -15,10 +16,10 @@ ENEMIES = {
         "loot_item": None,
         "items": [{"item": "Chatarra", "chance": 60, "cantidad": (1, 2)}],
         "efecto_probabilidad": 0,
-        "color": 0x8B4513,
+        "color": 0xFFD000,
     },
     "Saqueador": {
-        "emoji": "🥷",
+        "emoji": "⚠️",
         "hp": 65,
         "daño": (8, 15),
         "peso": 40,
@@ -34,7 +35,7 @@ ENEMIES = {
         "color": 0xFF0000,
     },
     "Infectado": {
-        "emoji": "🧟",
+        "emoji": "☢️",
         "hp": 150,
         "daño": (9, 10),
         "peso": 20,
@@ -47,18 +48,80 @@ ENEMIES = {
         ],
         "efecto_probabilidad": 0.3,
         "efecto": "Infectado",
-        "color": 0x2F4F4F,
+        "color": 0xFF8C00,
     },
-    "Horror": {
-        "emoji": "👁️",
-        "hp": 300,
-        "daño": (20, 25),
-        "peso": 10,
-        "lugares": ["Hospital", "Comisaría", "Refugio militar"],
-        "loot_overos": (300, 500),
+    "Lobo enfermo": {
+        "emoji": "⚠️",
+        "hp": 50,
+        "daño": (4, 9),
+        "peso": 70,
+        "lugares": [
+            "Metro",
+            "Bosque",
+            "Supermercado",
+        ],
+        "loot_overos": (10, 12),
         "loot_item": None,
         "items": [
-            {"item": "Pistola del Abismo", "chance": 50, "cantidad": (2, 4)},
+            {"item": "Chatarra", "chance": 60, "cantidad": (1, 2)},
+            {"item": "Cuero crudo", "chance": 50, "cantidad": (2, 4)},
+            {"item": "Cuero", "chance": 10, "cantidad": (1, 2)},
+        ],
+        "efecto_probabilidad": 0.3,
+        "efecto": "Sangrado",
+        "color": 0xFFD000,
+    },
+    "Enfermero intóxicado": {
+        "emoji": "⚠️",
+        "hp": 80,
+        "daño": (6, 10),
+        "peso": 50,
+        "lugares": [
+            "Metro",
+            "Hospital",
+        ],
+        "loot_overos": (40, 50),
+        "loot_item": None,
+        "items": [
+            {"item": "Alcohol", "chance": 90, "cantidad": (1, 4)},
+            {"item": "Alcohol antiséptico", "chance": 30, "cantidad": (2, 4)},
+            {"item": "Venda estéril", "chance": 30, "cantidad": (1, 2)},
+        ],
+        "efecto_probabilidad": 0.3,
+        "efecto": "Intoxicado",
+        "color": 0xFFD000,
+    },
+    "Aberración mal oliente": {
+        "emoji": "☢️",
+        "hp": 35,
+        "daño": (10, 15),
+        "peso": 20,
+        "lugares": [
+            "Refugio militar",
+            "Bosque",
+        ],
+        "loot_overos": (30, 40),
+        "loot_item": None,
+        "items": [
+            {"item": "Cuero crudo", "chance": 50, "cantidad": (1, 4)},
+            {"item": "Pólvora", "chance": 30, "cantidad": (2, 3)},
+            {"item": "Pilas", "chance": 10, "cantidad": (1, 2)},
+        ],
+        "efecto_probabilidad": 0.3,
+        "efecto": "Intoxicado",
+        "color": 0xFF8C00,
+    },
+    ###JEFES/MINI JEFES
+    "Horror": {
+        "emoji": "☣️",
+        "hp": 500,
+        "daño": (20, 30),
+        "peso": 2,
+        "lugares": ["Refugio militar"],
+        "loot_overos": (300, 1000),
+        "loot_item": None,
+        "items": [
+            {"item": "Pistola del Abismo", "chance": 50, "cantidad": (1, 1)},
             {"item": "Llave oxidada", "chance": 15, "cantidad": (1, 1)},
         ],
         "efecto_probabilidad": 0.3,

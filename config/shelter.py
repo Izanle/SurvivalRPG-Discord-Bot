@@ -7,16 +7,16 @@ SHELTER_LEVELS = {
         "descripcion": "Un rincón apenas protegido del clima. Mejor que nada.",
         "costo_overos": 0,
         "costo_items": {},
-        "cura_descanso": 15,
-        "cooldown_horas": 12,
+        "cura_descanso": 40,
+        "cooldown_horas": 3,
     },
     2: {
         "nombre": "Tienda improvisada",
         "descripcion": "Te protege de la lluvia y te permite descansar un poco mejor.",
         "costo_overos": 150,
         "costo_items": {"Cuerda": 2, "Venda": 1},  # Objetos requeridos para mejorar
-        "cura_descanso": 35,
-        "cooldown_horas": 10,
+        "cura_descanso": 60,
+        "cooldown_horas": 2,
     },
     3: {
         "nombre": "Cabaña reforzada",
@@ -24,7 +24,7 @@ SHELTER_LEVELS = {
         "costo_overos": 400,
         "costo_items": {"Pilas": 2, "Navaja": 1},
         "cura_descanso": 60,
-        "cooldown_horas": 8,
+        "cooldown_horas": 1,
     },
     4: {
         "nombre": "Búnker sellado",
@@ -32,6 +32,6 @@ SHELTER_LEVELS = {
         "costo_overos": 1000,
         "costo_items": {"Linterna": 1, "Alcohol medicinal": 3},
         "cura_descanso": 100,
-        "cooldown_horas": 6,
+        "cooldown_horas": 1,
     },
 }
