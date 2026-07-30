@@ -1857,8 +1857,8 @@ def revive_survivor(discord_id):
     time_since_death = datetime.now() - last_death_time
 
     # Validación del tiempo de espera (1 hora = 3600 segundos)
-    if time_since_death.total_seconds() < 10:
-        faltan_minutos = int((10 - time_since_death.total_seconds()) // 60)
+    if time_since_death.total_seconds() < 3600:
+        faltan_minutos = int((3600 - time_since_death.total_seconds()) // 60)
         connection.close()
         return (
             False,
