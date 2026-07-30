@@ -1618,6 +1618,60 @@ def get_unlocked_achievements(discord_id):
     return achievements
 
 
+def unlock_achievement(discord_id, achievement_id):
+    from config.achievements import ACHIEVEMENTS
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = %s", (discord_id,))
+    survivor = cursor.fetchone()
+
+    if not survivor:
+        connection.close()
+        return None
+
+    survivor_id = survivor["id"]
+
+    # Revisamos si el logro existe en el config
+    ach_data = ACHIEVEMENTS.get(achievement_id)
+    if not ach_data:
+        connection.close()
+        return None
+
+    # Revisamos si ya lo tiene desbloqueado
+    cursor.execute(
+        "SELECT 1 FROM achievements WHERE survivor_id = %s AND achievement_id = %s",
+        (survivor_id, achievement_id),
+    )
+    already_unlocked = cursor.fetchone()
+
+    if already_unlocked:
+        connection.close()
+        return None  # Ya lo tiene, no hacemos nada
+
+    # Si no lo tiene, se lo damos
+    cursor.execute(
+        "INSERT INTO achievements (survivor_id, achievement_id) VALUES (%s, %s)",
+        (survivor_id, achievement_id),
+    )
+
+    # Entregamos la recompensa de Overos
+    cursor.execute(
+        "UPDATE survivors SET overos = overos + %s WHERE id = %s",
+        (ach_data["recompensa_overos"], survivor_id),
+    )
+
+    connection.commit()
+    connection.close()
+
+    # Entregamos el item si tiene recompensa
+    if ach_data["recompensa_item"]:
+        add_item(discord_id, ach_data["recompensa_item"], 1)
+
+    # Devolvemos los datos del logro para mostrarlos en el mensaje
+    return ach_data
+
+
 # ==========================================
 # SISTEMA DE MUNDO DINÁMICO (FASE 10)
 # ==========================================

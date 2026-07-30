@@ -9,7 +9,7 @@ from utils.users import has_survivor, get_or_create_survivor
 
 
 # ==========================================
-# SISTEMA DE COMBATE PVE (FASE 8 + 9 + 10 + EQUIPO)
+# SISTEMA DE COMBATE PVE
 # ==========================================
 class CombatCog(commands.Cog):
     def __init__(self, bot):

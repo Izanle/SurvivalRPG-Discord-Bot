@@ -587,7 +587,12 @@ INCURSIONS = {
             },
             "cafeteria": {
                 "descripcion": "El olor en la cafetería es insoportable. Sin embargo, en la despensa trasera de la cocina encuentras algunas latas que sobrevivieron al saqueo.",
-                "items": [{"item": "Comida enlatada", "cantidad": 2}],
+                "items": [
+                    {"item": "Comida enlatada", "cantidad": 2},
+                    {"item": "Café instantáneo", "cantidad": 2},
+                    {"item": "Bebida isotónica", "cantidad": 1},
+                    {"item": "Barra energética", "cantidad": 1},
+                ],
                 "overos": (5, 15),
                 "opciones": [
                     {"label": "Volver al pasillo", "siguiente": "inicio", "emoji": "🔙"}
@@ -598,6 +603,10 @@ INCURSIONS = {
                 "items": [
                     {"item": "Venda", "cantidad": 2},
                     {"item": "Analgésicos", "cantidad": 1},
+                    {"item": "Venda estéril", "cantidad": 1},
+                    {"item": "Botiquín", "cantidad": 1},
+                    {"item": "Trapos", "cantidad": 4},
+                    {"item": "Suero", "cantidad": 1},
                 ],
                 "overos": (20, 50),
                 "opciones": [
@@ -645,7 +654,7 @@ INCURSIONS = {
             "mostradores_loot": {
                 "descripcion": "Consigues pasar al otro lado de las ventanillas blindadas y rebuscas entre las cajas registradoras. ¡Encuentras una bolsa con bastantes Overos y piezas esparcidas!",
                 "items": [],
-                "overos": (30, 70),
+                "overos": (100, 150),
                 "opciones": [
                     {
                         "label": "Volver al vestíbulo",
@@ -668,8 +677,8 @@ INCURSIONS = {
             },
             "oficinas": {
                 "descripcion": "Revisas los escritorios de los gerentes y altos directivos. Encuentras algunos objetos de valor personal que dejaron olvidados.",
-                "items": [],
-                "overos": (20, 50),
+                "items": [{"item": "Llave óxidada", "cantidad": 1}],
+                "overos": (50, 100),
                 "opciones": [
                     {
                         "label": "Volver al vestíbulo",
@@ -681,7 +690,7 @@ INCURSIONS = {
             "boveda": {
                 "descripcion": "Haces girar los pesados pernos blindados y la enorme puerta de la bóveda cede lentamente. ¡Adentro ha permanecido intacto durante años!",
                 "items": [],
-                "overos": (100, 250),  # ¡El granbotín de Overos!
+                "overos": (400, 500),
                 "opciones": [
                     {
                         "label": "Salir al vestíbulo",
@@ -733,7 +742,11 @@ INCURSIONS = {
             },
             "barracones_loot": {
                 "descripcion": "Rebuscas entre las literas y taquillas militares. ¡Encuentras equipo de supervivencia de alta calidad!",
-                "items": [],
+                "items": [
+                    {"item": "Ración militar", "cantidad": 4},
+                    {"item": "Pistola 9mm", "cantidad": 1},
+                    {"item": "Munición 9mm", "cantidad": 20},
+                ],
                 "overos": (40, 80),
                 "opciones": [
                     {"label": "Volver al pasillo", "siguiente": "inicio", "emoji": "🔙"}
@@ -743,22 +756,22 @@ INCURSIONS = {
                 "descripcion": "¡Cuidado! Un sistema defensivo automatizado seguía activo. Una torreta estropeada te dispara y el ruido atrae a enemigos.",
                 "damage": 20,  # Mucho daño
                 "tipo": "combate",
-                "enemigo": "Saqueador",  # Puedes cambiarlo a un enemigo más fuerte después
+                "enemigo": "Torreta AF-05",
                 "siguiente_exito": "inicio",
                 "siguiente_huida": "inicio",
             },
             "seguridad": {
                 "descripcion": "Logras entrar a la sala de control. Descargas datos de los servidores e interceptas algunos recursos confidenciales escondidos bajo las mesas.",
-                "items": [],
-                "overos": (30, 60),
+                "items": [],  # Aquí todavía está pendiente agregar objetos que estén acordes a esta área, por el momento dan bastantes overos
+                "overos": (70, 90),
                 "opciones": [
                     {"label": "Bajar al pasillo", "siguiente": "inicio", "emoji": "🔙"}
                 ],
             },
             "armeria_pesada": {
                 "descripcion": "Los mecanismos hidráulicos de la compuerta se abren. El arsenal principal fue saqueado, pero los remanentes son un tesoro absoluto.",
-                "items": [],
-                "overos": (150, 400),  # El botín más alto del juego
+                "items": [],  # Aquí se puede agregar un arma diferente, luego de que modifique la opción de que se pueda obtener por probabilidad, puede ser una AR-15 o similar
+                "overos": (150, 400),
                 "opciones": [
                     {"label": "Volver al pasillo", "siguiente": "inicio", "emoji": "🔙"}
                 ],

@@ -32,7 +32,7 @@ ACHIEVEMENTS = {
         "nombre": "Cazador de Horrores I",
         "descripcion": "Asesina al primer jefe de la zona, el Horror.",
         "emoji": "📜",
-        "requisito": {"tipo": "enemies_defeated", "cantidad": 1},
+        "requisito": {"tipo": "evento_especial", "cantidad": 1},
         "recompensa_overos": 400,
         "recompensa_item": None,
         "color": 0xE74C3C,  # Rojo

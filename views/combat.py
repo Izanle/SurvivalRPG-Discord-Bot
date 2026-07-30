@@ -74,6 +74,7 @@ class CombatView(discord.ui.View):
             loot_o = random.randint(*self.e_data["loot_overos"])
             add_overos(str(interact.user.id), loot_o)
             msg += f"\n🦴 Obtuviste **{loot_o} Overos**."
+
             # Compatibilidad con el botín antiguo
             if self.e_data.get("loot_item") and random.random() > 0.5:
                 add_item(str(interact.user.id), self.e_data["loot_item"], 1)
@@ -96,20 +97,41 @@ class CombatView(discord.ui.View):
 
             update_quest_progress(str(interact.user.id), "caceria", self.e_name)
 
-            # --- LOGROS: Actualizamos estadística de enemigos derrotados ---
+            # --- NUEVO: SISTEMA DINÁMICO DE LOGROS POR JEFE ---
+            logro_id = self.e_data.get("logro_derrota")
+            if logro_id:
+                from utils.users import unlock_achievement
+
+                logro_jefe = unlock_achievement(str(interact.user.id), logro_id)
+                if logro_jefe:
+                    msg += (
+                        f"\n\n🏆 **¡LOGRO ESPECIAL DESBLOQUEADO!** {logro_jefe['emoji']} **{logro_jefe['nombre']}**\n"
+                        f"*{logro_jefe['descripcion']}*\n"
+                        f"🎁 Recompensa: 🦴 {logro_jefe['recompensa_overos']} Overos"
+                    )
+                    if logro_jefe.get("recompensa_item"):
+                        msg += f" y 📦 {logro_jefe['recompensa_item']}"
+
+            # --- LOGROS: Actualizamos estadística general de enemigos derrotados ---
             nuevos_logros = update_stat(str(interact.user.id), "enemies_defeated")
             for logro in nuevos_logros:
                 msg += (
-                    f"\n\n🏆 **¡LOGRO DESBLOQUEADO!** {logro['emoji']} **{logro['nombre']}**\n*{logro['descripcion']}*\n🎁 Recompensa: 🦴 {logro['recompensa_overos']} Overos"
+                    f"\n\n🏆 **¡LOGRO DESBLOQUEADO!** {logro['emoji']} **{logro['nombre']}**\n"
+                    f"*{logro['descripcion']}*\n"
+                    f"🎁 Recompensa: 🦴 {logro['recompensa_overos']} Overos"
                     + (
                         f" y 📦 {logro['recompensa_item']}"
-                        if logro["recompensa_item"]
+                        if logro.get("recompensa_item")
                         else ""
                     )
                 )
 
         else:
             enemy_d = random.randint(*self.e_data["daño"])
+
+            # Nota: Asegúrate de tener importada get_current_weather arriba en el archivo
+            from config.world import get_current_weather
+
             _, clima_data, es_dia = get_current_weather()
             multiplicador = (
                 1.0 + (clima_data["peligro"] / 100) + (0.15 if not es_dia else 0)
@@ -127,11 +149,15 @@ class CombatView(discord.ui.View):
 
             update_health(str(interact.user.id), -enemy_d)
             msg += f"\n💥 El enemigo contraataca y te hace **{enemy_d}** de daño."
+
             if self.e_data.get("efecto") and random.random() < self.e_data.get(
                 "efecto_probabilidad", 0
             ):
+                from utils.users import add_effect  # <-- Asegúrate de importarlo
+
                 add_effect(str(interact.user.id), self.e_data["efecto"])
                 msg += f"\n🧪 ¡Te infectó con **{self.e_data['efecto']}**!"
+
         await self.update_combat(interact, msg)
 
     @discord.ui.button(label="Curarse", emoji="🩹", style=discord.ButtonStyle.success)
