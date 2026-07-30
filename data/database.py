@@ -1,7 +1,17 @@
 import sqlite3
 import os
 
-DATABASE_PATH = "data/bot.db"
+from pathlib import Path
+
+# Calcula la ruta absoluta del proyecto sin importar dónde corra (PC o Nube)
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATABASE_PATH = BASE_DIR / "data" / "bot.db"
+
+
+def get_connection():
+    # Crea la carpeta data/ automáticamente si no existe
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(DATABASE_PATH)
 
 
 def get_connection():
