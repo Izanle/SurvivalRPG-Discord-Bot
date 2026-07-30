@@ -27,7 +27,8 @@ def init_database():
             timezone TEXT DEFAULT 'UTC',
             status TEXT DEFAULT 'Vivo',
             last_explore TIMESTAMP,
-            health INTEGER DEFAULT 100
+            health INTEGER DEFAULT 100,
+            last_death TIMESTAMP
         )
     """)
 
@@ -129,6 +130,17 @@ def init_database():
             ON DELETE CASCADE,
             
             UNIQUE(survivor_id, achievement_id)
+        )
+    """)
+
+    # --- NUEVA TABLA: BAÚL ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS baul (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            survivor_id INTEGER,
+            item TEXT NOT NULL,
+            quantity INTEGER DEFAULT 1,
+            FOREIGN KEY(survivor_id) REFERENCES survivors(id)
         )
     """)
 

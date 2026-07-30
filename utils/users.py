@@ -462,6 +462,41 @@ def get_health(discord_id):
 def update_health(discord_id, amount):
     connection = get_connection()
     cursor = connection.cursor()
+    cursor.execute(
+        "SELECT id, health FROM survivors WHERE discord_id = ?", (discord_id,)
+    )
+    survivor = cursor.fetchone()
+
+    if not survivor:
+        connection.close()
+        return None
+
+    new_health = survivor["health"] + amount
+    if new_health > 100:
+        new_health = 100
+    elif new_health <= 0:
+        new_health = 0
+
+        # --- NUEVA LÓGICA DE MUERTE HARDCORE ---
+        from datetime import datetime
+
+        hora_muerte = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Guardamos la hora de muerte
+        cursor.execute(
+            "UPDATE survivors SET last_death = ? WHERE id = ?",
+            (hora_muerte, survivor["id"]),
+        )
+
+        # Vaciamos el inventario activo (¡Lo pierde todo!)
+        cursor.execute("DELETE FROM inventory WHERE survivor_id = ?", (survivor["id"],))
+
+        # Opcional: Podrías hacer que pierda los overos también si quieres ser muy cruel
+        # cursor.execute("UPDATE survivors SET overos = 0 WHERE id = ?", (survivor["id"],))
+
+    cursor.execute(
+        "UPDATE survivors SET health = ? WHERE id = ?", (new_health, survivor["id"])
+    )
 
     cursor.execute(
         """
@@ -495,6 +530,7 @@ def update_health(discord_id, amount):
 
     connection.commit()
     connection.close()
+    return new_health
 
 
 # Reiniciar perfil de un usuario
@@ -533,115 +569,68 @@ def reset_survivor(discord_id):
 
 # Añade un objeto al inventario del superviviente.
 def add_item(discord_id, item, quantity=1):
-
-    # Normalizamos el nombre del objeto.
-    for name in ITEMS:
-        if name.lower() == item.lower():
-            item = name
-            break
-
-    # Revisamos si el objeto puede acumularse.
-    item_data = ITEMS.get(item)
-
-    if item_data and not item_data.get("acumulable", True):
-
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        cursor.execute(
-            """
-            SELECT id
-            FROM survivors
-            WHERE discord_id = ?
-            """,
-            (discord_id,),
-        )
-
-        survivor = cursor.fetchone()
-
-        if survivor:
-
-            cursor.execute(
-                """
-                SELECT quantity
-                FROM inventory
-                WHERE survivor_id = ?
-                AND item = ?
-                """,
-                (survivor["id"], item),
-            )
-
-            existing = cursor.fetchone()
-
-            if existing:
-
-                connection.close()
-                return
-
     connection = get_connection()
     cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT id
-        FROM survivors
-        WHERE discord_id = ?
-        """,
-        (discord_id,),
-    )
-
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
     survivor = cursor.fetchone()
-
-    if survivor is None:
+    if not survivor:
         connection.close()
-        return
+        return False, "Superviviente no encontrado."
 
-    print("Superviviente:", survivor)
+    survivor_id = survivor["id"]
 
+    # 1. Revisar cuántos objetos diferentes tiene (Límite de 15)
     cursor.execute(
-        """
-        SELECT quantity
-        FROM inventory
-        WHERE survivor_id = ?
-        AND item = ?
-        """,
-        (survivor["id"], item),
+        "SELECT COUNT(*) as total_items FROM inventory WHERE survivor_id = ?",
+        (survivor_id,),
     )
+    total_items = cursor.fetchone()["total_items"]
 
-    existing = cursor.fetchone()
+    # 2. Revisar si ya tiene este objeto
+    cursor.execute(
+        "SELECT id, quantity FROM inventory WHERE survivor_id = ? AND item = ?",
+        (survivor_id, item),
+    )
+    inv_item = cursor.fetchone()
 
-    if existing:
-
-        cursor.execute(
-            """
-            UPDATE inventory
-            SET quantity = quantity + ?
-            WHERE survivor_id = ?
-            AND item = ?
-            """,
-            (quantity, survivor["id"], item),
-        )
-
+    if inv_item:
+        nueva_cantidad = inv_item["quantity"] + quantity
+        # Límite de 99 por objeto
+        if nueva_cantidad > 99:
+            sobrante = nueva_cantidad - 99
+            cursor.execute(
+                "UPDATE inventory SET quantity = 99 WHERE id = ?", (inv_item["id"],)
+            )
+            connection.commit()
+            connection.close()
+            return (
+                True,
+                f"Se llenó el stack de {item} a 99 (se perdieron {sobrante} en el camino).",
+            )
+        else:
+            cursor.execute(
+                "UPDATE inventory SET quantity = ? WHERE id = ?",
+                (nueva_cantidad, inv_item["id"]),
+            )
     else:
+        # Si no lo tiene, verificamos si hay espacio para un nuevo objeto (máximo 15)
+        if total_items >= 15:
+            connection.close()
+            return (
+                False,
+                f"Tu mochila está llena (15/15 objetos). No puedes cargar el nuevo ítem: **{item}**.",
+            )
 
+        # Limitar la cantidad inicial a 99 por si acaso le dan 100 de golpe
+        cantidad_final = min(quantity, 99)
         cursor.execute(
-            """
-            INSERT INTO inventory
-            (survivor_id, item, quantity)
-            VALUES (?, ?, ?)
-            """,
-            (survivor["id"], item, quantity),
+            "INSERT INTO inventory (survivor_id, item, quantity) VALUES (?, ?, ?)",
+            (survivor_id, item, cantidad_final),
         )
-
-        cursor.execute("""
-         SELECT *
-        FROM inventory
-         """)
-
-        print(cursor.fetchall())
 
     connection.commit()
     connection.close()
+    return True, f"Objeto {item} agregado."
 
 
 # Obtiene todos los objetos del inventario del superviviente.
@@ -1558,16 +1547,13 @@ def check_achievements(discord_id):
         req_type = ach_data["requisito"]["tipo"]
         req_amount = ach_data["requisito"]["cantidad"]
 
-        if stats[req_type] >= req_amount:
-            cursor.execute(
-                "INSERT INTO achievements (survivor_id, achievement_id) VALUES (?, ?)",
-                (survivor_id, ach_id),
-            )
-            cursor.execute(
-                "UPDATE survivors SET overos = overos + ? WHERE id = ?",
-                (ach_data["recompensa_overos"], survivor_id),
-            )
-            new_unlocks.append(ach_data)
+        if req_type in stats.keys():
+            if stats[req_type] >= req_amount:
+                # Insertar logro
+                cursor.execute(
+                    "INSERT INTO achievements (survivor_id, achievement_id) VALUES (?, ?)",
+                    (survivor_id, ach_id),
+                )
 
     connection.commit()
     connection.close()
@@ -1821,6 +1807,236 @@ def equip_item(discord_id, item_nombre):
             (item_nombre, survivor["id"]),
         )
         msg = f"🛡️ Te has equipado la protección: **{item_nombre}**"
+
+    connection.commit()
+    connection.close()
+    return True, msg
+
+
+# FUNCIÓN QUE REVIVE AL JUGADOR
+def revive_survivor(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT id, health, last_death FROM survivors WHERE discord_id = ?",
+        (discord_id,),
+    )
+    survivor = cursor.fetchone()
+
+    if not survivor:
+        connection.close()
+        return False, "Superviviente no encontrado."
+
+    if survivor["health"] > 0:
+        connection.close()
+        return False, "¡Aún estás vivo! No puedes revivir."
+
+    from datetime import datetime
+
+    # --- SI ESTÁ MUERTO PERO last_death ES NULL ---
+    if not survivor["last_death"]:
+        # Opción A: Registrar la muerte en este momento para iniciar el temporizador de 1h
+        hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            "UPDATE survivors SET last_death = ? WHERE id = ?",
+            (hora_actual, survivor["id"]),
+        )
+        connection.commit()
+        connection.close()
+        return (
+            False,
+            "⚠️ No existía un registro con la hora de tu muerte. Se ha guardado la fecha actual en el sistema. Podrás revivir en **1 hora**.",
+        )
+
+    # Convertimos la fecha guardada
+    try:
+        last_death_time = datetime.strptime(survivor["last_death"], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        last_death_time = datetime.now()
+
+    time_since_death = datetime.now() - last_death_time
+
+    # Validación del tiempo de espera (1 hora = 3600 segundos)
+    if time_since_death.total_seconds() < 10:
+        faltan_minutos = int((10 - time_since_death.total_seconds()) // 60)
+        connection.close()
+        return (
+            False,
+            f"Aún estás muy débil. Debes esperar **{faltan_minutos} minutos** más para revivir.",
+        )
+
+    # --- LIMPIEZA HARDCORE AL REVIVIR ---
+    # 1. Borramos inventario (mochila)
+    cursor.execute("DELETE FROM inventory WHERE survivor_id = ?", (survivor["id"],))
+
+    # 2. Limpiamos efectos y enfermedades
+    cursor.execute(
+        "DELETE FROM active_effects WHERE survivor_id = ?", (survivor["id"],)
+    )
+    cursor.execute(
+        "DELETE FROM survivor_effects WHERE survivor_id = ?", (survivor["id"],)
+    )
+
+    # 3. Restablecemos vida, estado, equipamiento y reseteamos last_death
+    cursor.execute(
+        """
+        UPDATE survivors 
+        SET health = 100, 
+            status = 'Vivo', 
+            arma_equipada = NULL, 
+            armadura_equipada = NULL, 
+            last_death = NULL 
+        WHERE id = ?
+    """,
+        (survivor["id"],),
+    )
+
+    connection.commit()
+    connection.close()
+    return (
+        True,
+        "Has despertado en tu refugio. Perdiste todo lo que llevabas en la mochila y tu equipamiento, pero al menos sigues con vida.",
+    )
+
+
+# SISTEMA DE BAÚL
+def get_baul(discord_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+    if not survivor:
+        connection.close()
+        return []
+
+    cursor.execute(
+        "SELECT item, quantity FROM baul WHERE survivor_id = ?", (survivor["id"],)
+    )
+    items = cursor.fetchall()
+    connection.close()
+    return items
+
+
+# SISTEMA DE TRANSFERENCIA DE INVENTARIO A BAÚL
+def transfer_item(discord_id, item_name, quantity, to_baul=True):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM survivors WHERE discord_id = ?", (discord_id,))
+    survivor = cursor.fetchone()
+    if not survivor:
+        connection.close()
+        return False, "Superviviente no encontrado."
+
+    survivor_id = survivor["id"]
+
+    if to_baul:
+        # DE INVENTARIO AL BAÚL
+        cursor.execute(
+            "SELECT id, quantity FROM inventory WHERE survivor_id = ? AND item = ?",
+            (survivor_id, item_name),
+        )
+        inv_item = cursor.fetchone()
+
+        if not inv_item or inv_item["quantity"] < quantity:
+            connection.close()
+            return (
+                False,
+                f"❌ No tienes {quantity}x de **{item_name}** en tu inventario activo.",
+            )
+
+        # Quitamos del inventario
+        if inv_item["quantity"] == quantity:
+            cursor.execute("DELETE FROM inventory WHERE id = ?", (inv_item["id"],))
+        else:
+            cursor.execute(
+                "UPDATE inventory SET quantity = quantity - ? WHERE id = ?",
+                (quantity, inv_item["id"]),
+            )
+
+        # Sumamos al baúl (el baúl es ilimitado en slots y cantidad)
+        cursor.execute(
+            "SELECT id, quantity FROM baul WHERE survivor_id = ? AND item = ?",
+            (survivor_id, item_name),
+        )
+        baul_item = cursor.fetchone()
+
+        if baul_item:
+            cursor.execute(
+                "UPDATE baul SET quantity = quantity + ? WHERE id = ?",
+                (quantity, baul_item["id"]),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO baul (survivor_id, item, quantity) VALUES (?, ?, ?)",
+                (survivor_id, item_name, quantity),
+            )
+
+        msg = f"📦 Guardaste **{quantity}x {item_name}** de forma segura en tu baúl."
+
+    else:
+        # DEL BAÚL AL INVENTARIO
+        cursor.execute(
+            "SELECT id, quantity FROM baul WHERE survivor_id = ? AND item = ?",
+            (survivor_id, item_name),
+        )
+        baul_item = cursor.fetchone()
+
+        if not baul_item or baul_item["quantity"] < quantity:
+            connection.close()
+            return False, f"❌ No tienes {quantity}x de **{item_name}** en tu baúl."
+
+        # Revisamos los LÍMITES de la mochila activa
+        cursor.execute(
+            "SELECT COUNT(*) as total FROM inventory WHERE survivor_id = ?",
+            (survivor_id,),
+        )
+        total_items = cursor.fetchone()["total"]
+
+        cursor.execute(
+            "SELECT id, quantity FROM inventory WHERE survivor_id = ? AND item = ?",
+            (survivor_id, item_name),
+        )
+        inv_item = cursor.fetchone()
+
+        if not inv_item and total_items >= 15:  # Límite de 3 páginas (15 objetos)
+            connection.close()
+            return (
+                False,
+                "❌ Tu mochila está llena (15/15 objetos). Guarda algo en el baúl antes de sacar esto.",
+            )
+
+        if inv_item and (
+            inv_item["quantity"] + quantity > 99
+        ):  # Límite de 99 por stack
+            connection.close()
+            return (
+                False,
+                "❌ Tu mochila no soporta más de 99 unidades por objeto. Saca una cantidad menor.",
+            )
+
+        # Quitamos del baúl
+        if baul_item["quantity"] == quantity:
+            cursor.execute("DELETE FROM baul WHERE id = ?", (baul_item["id"],))
+        else:
+            cursor.execute(
+                "UPDATE baul SET quantity = quantity - ? WHERE id = ?",
+                (quantity, baul_item["id"]),
+            )
+
+        # Sumamos a la mochila
+        if inv_item:
+            cursor.execute(
+                "UPDATE inventory SET quantity = quantity + ? WHERE id = ?",
+                (quantity, inv_item["id"]),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO inventory (survivor_id, item, quantity) VALUES (?, ?, ?)",
+                (survivor_id, item_name, quantity),
+            )
+
+        msg = f"🎒 Sacaste **{quantity}x {item_name}** del baúl y lo llevas en la mochila."
 
     connection.commit()
     connection.close()

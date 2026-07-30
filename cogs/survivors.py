@@ -4,6 +4,7 @@ from datetime import datetime
 import random
 
 import discord
+from views.combat import BaulView
 from discord.ext import commands
 from config.quests import QUESTS
 from utils.users import (
@@ -27,6 +28,7 @@ from utils.users import (
     get_current_weather,
     get_unlocked_achievements,
     get_equipped_gear,
+    revive_survivor,
 )
 
 
@@ -514,6 +516,31 @@ class Survivors(commands.Cog):
             embed.description = "No tienes ninguna misión activa en este momento. ¡Busca trabajo en el tablón!"
 
         await interaction.response.send_message(embed=embed, view=MisionView())
+
+    # Comando para reanimarse
+    @discord.app_commands.command(
+        name="reanimación", description="Revive tras esperar 1 hora desde tu muerte."
+    )
+    async def revivir(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        exito, msg = revive_survivor(str(interaction.user.id))
+
+        color = discord.Color.green() if exito else discord.Color.red()
+        embed = discord.Embed(title="⚰️ Resurrección", description=msg, color=color)
+        await interaction.followup.send(embed=embed)
+
+    # Comando para ver el baúl
+    @discord.app_commands.command(
+        name="baul",
+        description="Abre el baúl del refugio para guardar o sacar objetos.",
+    )
+    async def baul(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+
+        view = BaulView(interaction.user.id)
+        embed = await view.generar_embed(interaction.user.id)
+
+        await interaction.followup.send(embed=embed, view=view)
 
 
 async def setup(bot):
